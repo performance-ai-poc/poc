@@ -9,6 +9,9 @@ where agent logic lives — see app/service.py and the README for what's next
 
 from __future__ import annotations
 
+import logging
+import traceback
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +22,7 @@ from app.config import settings
 from app.context import RequestContext, resolve_context
 from app.logging_utils import configure_logging, log_event
 from app.middleware import RequestContextMiddleware
-from app.schemas import ChatRequest, ChatResponse
+from app.schemas import ChatRequest, ChatResponse, ErrorResponse
 from app.service import generate_reply
 
 configure_logging(settings.log_level)
@@ -56,14 +59,27 @@ def health() -> dict:
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest, request: Request) -> ChatResponse:
+async def chat(payload: ChatRequest, request: Request) -> ChatResponse:
+    # No local try/except here: the global `Exception` handler below already
+    # has this same context and logs a consistent shape for every endpoint,
+    # not just this one — see unhandled_exception_handler.
     ctx = _context_from_request(request)
-    try:
-        reply = generate_reply(payload.message, ctx)
-    except Exception:
-        log_event(ctx, "chat.unhandled_error", endpoint="/chat", level=40)
-        raise
+    reply = await generate_reply(payload.message, ctx)
     return ChatResponse(reply=reply, **ctx.as_dict())
+
+
+def _errors_without_input(exc: RequestValidationError) -> list[dict]:
+    """Strip pydantic's "input" key from each error entry before it's logged.
+
+    FastAPI's RequestValidationError.errors() returns pre-built dicts (it
+    doesn't forward include_input=False to pydantic — the underlying
+    ValidationException.errors() takes no arguments), and each entry's
+    "input" is the raw value that failed validation: potentially the
+    caller's entire malformed body. Logging that would violate
+    metadata-only-by-default, so it's dropped here rather than passed
+    through to log_event.
+    """
+    return [{k: v for k, v in error.items() if k != "input"} for error in exc.errors()]
 
 
 @app.exception_handler(RequestValidationError)
@@ -71,20 +87,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     ctx = _context_from_request(request)
     log_event(
         ctx,
-        "request.validation_error",
+        "api.request.validation_error",
         endpoint=request.url.path,
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        level=30,
-        errors=exc.errors(),
+        level=logging.WARNING,
+        errors=_errors_without_input(exc),
     )
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error": "invalid_request",
-            "detail": "The request body is malformed or missing required fields (e.g. 'message').",
-            **ctx.as_dict(),
-        },
+    body = ErrorResponse(
+        error="invalid_request",
+        detail="The request body is malformed or missing required fields (e.g. 'message').",
+        **ctx.as_dict(),
     )
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=body.model_dump())
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -92,34 +106,53 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     ctx = _context_from_request(request)
     log_event(
         ctx,
-        "request.http_error",
+        "api.request.http_error",
         endpoint=request.url.path,
         status_code=exc.status_code,
-        level=30,
+        level=logging.WARNING,
         detail=str(exc.detail),
     )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": "http_error", "detail": str(exc.detail), **ctx.as_dict()},
-    )
+    body = ErrorResponse(error="http_error", detail=str(exc.detail), **ctx.as_dict())
+    return JSONResponse(status_code=exc.status_code, content=body.model_dump())
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # error_message/traceback are for local stdout visibility only — the
+    # HTTP response below never includes them. This doesn't conflict with
+    # metadata-only-by-default: that principle governs what's exported to a
+    # future external telemetry system, not this process's own local logs,
+    # and nothing here is exported anywhere yet.
     ctx = _context_from_request(request)
     log_event(
         ctx,
-        "request.unhandled_exception",
+        "api.request.unhandled_exception",
         endpoint=request.url.path,
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        level=40,
+        level=logging.ERROR,
         error_type=type(exc).__name__,
+        error_message=str(exc),
+        traceback=traceback.format_exc(),
     )
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "internal_error",
-            "detail": "An unexpected error occurred while processing the request.",
-            **ctx.as_dict(),
-        },
+    body = ErrorResponse(
+        error="internal_error",
+        detail="An unexpected error occurred while processing the request.",
+        **ctx.as_dict(),
+    )
+    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=body.model_dump())
+
+
+if __name__ == "__main__":
+    # Programmatic entrypoint so HOST/PORT from .env (app/config.py) actually
+    # take effect — `uvicorn app.main:app --port ...` on the CLI silently
+    # ignores settings.port; running `python -m app.main` does not. Reload is
+    # tied to APP_ENV so a "development" .env still gets the usual autoreload
+    # dev loop without a separate --reload flag to remember.
+    import uvicorn
+
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.app_env == "development",
     )

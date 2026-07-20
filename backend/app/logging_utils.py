@@ -25,6 +25,12 @@ from app.context import RequestContext
 
 _LOGGER_NAME = "backend"
 
+# Stamped on every log line as "service.name" so that once the orchestrator,
+# agents, and MCP server are logging in this same shape, records can be told
+# apart by which service emitted them (matches the design doc's event
+# schema, which carries service.name on every record).
+SERVICE_NAME = "backend-api"
+
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -67,6 +73,7 @@ def log_event(
     """
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service.name": SERVICE_NAME,
         "event": event,
         **ctx.as_dict(),
     }
