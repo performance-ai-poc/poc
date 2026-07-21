@@ -44,3 +44,16 @@ mcpServer:
   service:
     type: ClusterIP
     port: 8000
+
+dashboardUi:
+  replicaCount: 1
+
+  image:
+    repository: dashboard-ui
+    tag: demo
+    pullPolicy: Never
+
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30082
