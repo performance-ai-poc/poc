@@ -32,3 +32,15 @@ orchestrator:
     appEnv: production
     host: 0.0.0.0
     port: "8001"
+
+mcpServer:
+  replicaCount: 1
+
+  image:
+    repository: mcp-server
+    tag: demo
+    pullPolicy: Never
+
+  service:
+    type: ClusterIP
+    port: 8000
