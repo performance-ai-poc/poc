@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-chat.fullname" . }}-orchestrator
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+spec:
+  type: {{ .Values.orchestrator.service.type }}
+
+  selector:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.orchestrator.service.port }}
+      targetPort: http
+
+      {{- if and
+          (eq .Values.orchestrator.service.type "NodePort")
+          .Values.orchestrator.service.nodePort
+      }}
+      nodePort: {{ .Values.orchestrator.service.nodePort }}
+      {{- end }}

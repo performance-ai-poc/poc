@@ -13,3 +13,22 @@ customerUi:
     type: NodePort
     port: 80
     nodePort: 30080
+
+
+orchestrator:
+  replicaCount: 1
+
+  image:
+    repository: orchestrator-svc
+    tag: demo
+    pullPolicy: Never
+
+  service:
+    type: NodePort
+    port: 8001
+    nodePort: 30081
+
+  env:
+    appEnv: production
+    host: 0.0.0.0
+    port: "8001"
