@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-chat.fullname" . }}-customer-ui
+  labels:
+    app.kubernetes.io/name: customer-ui
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+spec:
+  type: {{ .Values.customerUi.service.type }}
+
+  selector:
+    app.kubernetes.io/name: customer-ui
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.customerUi.service.port }}
+      targetPort: http
+
+      {{- if and
+          (eq .Values.customerUi.service.type "NodePort")
+          .Values.customerUi.service.nodePort
+      }}
+      nodePort: {{ .Values.customerUi.service.nodePort }}
+      {{- end }}
