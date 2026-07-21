@@ -1,77 +1,50 @@
-# React + TypeScript + Vite
+# Customer UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This folder contains the customer-facing React/Vite app shell for the AI chat
+POC. It is currently still the default Vite starter screen, so no chat workflow
+or orchestrator API integration exists yet.
 
-Currently, two official plugins are available:
+## What Lives Here
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `src/` - React application source.
+- `src/assets/` - starter image and SVG assets.
+- `public/` - static assets served directly by Vite/Nginx.
+- `Dockerfile` - multi-stage Node build served by Nginx.
+- `nginx.conf` - SPA fallback config for the production container.
+- `.env.example` - intended location for future Vite runtime configuration.
 
-## React Compiler
+## Running Locally
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
-
-Note: This will impact Vite dev & build performances.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Other useful commands:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm run lint
+npm run build
+npm run preview
 ```
+
+## Container
+
+From the repo root:
+
+```bash
+docker build -t customer-ui:demo ./customer-ui
+```
+
+The root Makefile wraps this with:
+
+```bash
+make build-customer-ui
+make rebuild-customer-ui
+```
+
+## Integration Notes
+
+The eventual customer workflow should call `orchestrator-svc`'s `POST /chat`
+endpoint and preserve the returned `session_id` across turns. At the moment,
+`src/App.tsx` does not read any environment variables or make network calls.
