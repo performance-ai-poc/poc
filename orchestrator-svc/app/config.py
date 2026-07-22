@@ -23,6 +23,42 @@ class Settings(BaseSettings):
     # never logged or echoed back.
     model_api_key: str | None = None
 
+    # ------------------------------------------------------------------
+    # REST API Agent (Agent 2) — LLM + MCP wiring.
+    #
+    # The sub-agents are the ONLY place an LLM is called (the orchestrator
+    # itself is deterministic — see the architecture spec, section 3.2), so
+    # these settings are consumed by app/agents/api_agent.py via app/llm.py
+    # and app/mcp_client.py, never by the graph/routing layer.
+    #
+    # `agent_live_calls` is the master switch between two behaviours that
+    # emit IDENTICAL telemetry (the agent.* log contract in section 5):
+    #   - False (default): fully in-process, offline, deterministic. No
+    #     network. This is what the test suite and any environment without
+    #     the LLM/MCP services running rely on.
+    #   - True: real HTTP calls to the OpenAI-compatible LLM endpoint and
+    #     real streamable-http calls to the MCP server. Set this in the
+    #     demo/deploy environment (.env, Docker, Helm) once both are up.
+    # ------------------------------------------------------------------
+    agent_live_calls: bool = False
+
+    # OpenAI-compatible chat-completions endpoint the REST API Agent's
+    # planner calls. Only used when agent_live_calls is True.
+    llm_base_url: str = "https://openai.rc.asu.edu/v1"
+    llm_api_key: str | None = None
+    llm_model: str = "qwen3-coder-30b-a3b-instruct"
+    # Seconds before a single LLM HTTP attempt is abandoned (the retry helper
+    # governs tool calls; this bounds the planner call specifically). The demo
+    # model (qwen3-coder-30b-a3b-instruct) is a non-reasoning instruct model
+    # that returns in ~2-4s, so this is a generous ceiling that also fails
+    # within a minute if the endpoint is unreachable/hung.
+    llm_timeout_s: float = 60.0
+
+    # streamable-http URL of the MCP server (mcp-server/app/server.py, which
+    # binds :8000). Only used when agent_live_calls is True.
+    mcp_server_url: str = "http://localhost:8000/mcp"
+    mcp_timeout_s: float = 30.0
+
     # Fallback tenant_id used whenever a caller doesn't supply one (see
     # app.context.resolve_context). A stable default instead of a fresh
     # random UUID per request, so anonymous/demo traffic groups under one

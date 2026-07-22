@@ -5,6 +5,13 @@ pydantic-settings==2.7.1
 python-dotenv==1.0.1
 langgraph==1.2.9
 
-# Test-only dependencies. httpx is required by fastapi.testclient.TestClient.
-pytest==9.1.1
+# REST API Agent (Agent 2) live mode + test client. httpx drives both the
+# OpenAI-compatible LLM endpoint and the streamable-http MCP calls (the MCP
+# server runs with json_response=True, so a plain JSON-RPC-over-HTTP client is
+# enough — no separate mcp SDK, whose newer starlette pin conflicts with the
+# fastapi version this service is built and tested against). httpx is also
+# required by fastapi.testclient.TestClient, so it is a hard dependency.
 httpx==0.28.1
+
+# Test-only dependencies.
+pytest==9.1.1

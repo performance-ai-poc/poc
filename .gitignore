@@ -41,4 +41,7 @@ Thumbs.db
 # Logs
 *.log
 
+# Architecture reference PDF — kept local, not committed
+/multi_agent_client_architecture_v2.pdf
+
 opencode.json

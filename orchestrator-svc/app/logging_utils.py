@@ -130,8 +130,11 @@ def log_event(
 # the documented event schema — never nested under a "payload" key.
 #
 # agent.tool_selected, agent.tool_returned, agent.retried, and
-# agent.llm_call are owned by the sub-agents and the shared retry helper,
-# not this layer, and are intentionally not defined here yet.
+# agent.llm_call are owned by the sub-agents (app/agents/) and the shared
+# retry helper (app/retry.py) — the executor layer, where the only LLM and
+# tool calls in the system happen. They are defined below alongside the
+# step.* emitters so the whole agent.* namespace lives in one module and
+# shares log_event's fail-open + metadata-only guarantees by construction.
 
 
 def log_agent_step_started(ctx: RequestContext, payload: dict) -> None:
@@ -147,3 +150,37 @@ def log_agent_step_completed(ctx: RequestContext, payload: dict) -> None:
 def log_agent_step_failed(ctx: RequestContext, payload: dict) -> None:
     """Emitted by the orchestrator's advance node when a step failed."""
     log_event(ctx, "agent.step_failed", log_level=logging.WARNING, **payload)
+
+
+def log_agent_llm_call(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by a sub-agent around each LLM call it makes.
+
+    Carries model/token/latency metadata only (model_id, input_tokens,
+    output_tokens, latency_ms) plus the graph.node/step.sequence/call.sequence
+    positional metadata — never the prompt or the model's response text. The
+    orchestrator makes no LLM calls, so every agent.llm_call originates in a
+    sub-agent (architecture spec, section 3.2 / 5.1).
+    """
+    log_event(ctx, "agent.llm_call", **payload)
+
+
+def log_agent_tool_selected(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by the shared retry helper immediately before each MCP call
+    attempt (including retries). Carries tool_name + args_digest — the args
+    themselves are hashed, never logged raw."""
+    log_event(ctx, "agent.tool_selected", **payload)
+
+
+def log_agent_tool_returned(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by the shared retry helper when an MCP call returns (on final
+    success or terminal failure). Carries latency_ms, a success/error status,
+    and result *metadata* only (status_code, counts, retrieval_ids) — never
+    response bodies, SQL rows, or document text."""
+    log_event(ctx, "agent.tool_returned", **payload)
+
+
+def log_agent_retried(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by the shared retry helper before each re-attempt — the single
+    retry layer in the whole system (architecture spec, section 4.3). Carries
+    retry.attempt (1 = first retry) and a short reason string."""
+    log_event(ctx, "agent.retried", log_level=logging.WARNING, **payload)
