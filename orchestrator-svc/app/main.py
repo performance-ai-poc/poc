@@ -90,7 +90,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         "api.request.validation_error",
         endpoint=request.url.path,
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        level=logging.WARNING,
+        log_level=logging.WARNING,
         errors=_errors_without_input(exc),
     )
     body = ErrorResponse(
@@ -109,7 +109,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         "api.request.http_error",
         endpoint=request.url.path,
         status_code=exc.status_code,
-        level=logging.WARNING,
+        log_level=logging.WARNING,
         detail=str(exc.detail),
     )
     body = ErrorResponse(error="http_error", detail=str(exc.detail), **ctx.as_dict())
@@ -129,7 +129,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         "api.request.unhandled_exception",
         endpoint=request.url.path,
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        level=logging.ERROR,
+        log_level=logging.ERROR,
         error_type=type(exc).__name__,
         error_message=str(exc),
         traceback=traceback.format_exc(),

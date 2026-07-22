@@ -63,24 +63,87 @@ def log_event(
     *,
     endpoint: str | None = None,
     status_code: int | None = None,
-    level: int = logging.INFO,
+    log_level: int = logging.INFO,
     **extra: Any,
 ) -> None:
     """Emit one structured JSON log line for a request-scoped event.
 
     ``ctx`` is required (not optional) so it is impossible to log a
     request-related event without carrying the four identifiers.
-    """
-    payload = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service.name": SERVICE_NAME,
-        "event": event,
-        **ctx.as_dict(),
-    }
-    if endpoint is not None:
-        payload["endpoint"] = endpoint
-    if status_code is not None:
-        payload["status_code"] = status_code
-    payload.update(extra)
 
-    get_logger().log(level, event, extra={"json_payload": payload})
+    The Python logging level parameter is named ``log_level`` here, not
+    ``level`` — a caller's ``**extra`` metadata dict is spread directly
+    into this function's keyword arguments (see the ``agent.*`` emitters
+    below), and a metadata field named ``level`` is a plausible future
+    field name (e.g. a business-severity classification) that would
+    otherwise collide with a same-named reserved parameter.
+
+    This function must never raise: a failure here (a collision like the
+    one above, or any other unexpected error while building/emitting the
+    line) would otherwise propagate out of whatever caller triggered it —
+    including a LangGraph node mid-request — turning a pure observability
+    concern into a failed customer request. That would violate the
+    fail-open discipline documented at the top of this module, so any
+    exception is caught and replaced with a minimal fallback line instead
+    of ever being re-raised. The fallback intentionally carries no
+    ``extra`` payload data (that's the part that may have caused the
+    failure) — just enough to know something failed to log.
+    """
+    try:
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service.name": SERVICE_NAME,
+            "event": event,
+            **ctx.as_dict(),
+        }
+        if endpoint is not None:
+            payload["endpoint"] = endpoint
+        if status_code is not None:
+            payload["status_code"] = status_code
+        payload.update(extra)
+
+        get_logger().log(log_level, event, extra={"json_payload": payload})
+    except Exception as exc:  # noqa: BLE001 — fail-open: logging must never crash a request.
+        try:
+            fallback_payload = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "service.name": SERVICE_NAME,
+                "event": "logging.emit_failed",
+                **ctx.as_dict(),
+                "original_event": event,
+                "error_type": type(exc).__name__,
+            }
+            get_logger().log(logging.ERROR, "logging.emit_failed", extra={"json_payload": fallback_payload})
+        except Exception:  # noqa: BLE001 — even the fallback must never raise.
+            pass
+
+
+# agent.* events — owned by the orchestrator's graph nodes (see
+# app/orchestrator/nodes.py), alongside the api.* events emitted by
+# main.py/middleware.py. Dotted metadata keys (graph.node,
+# step.sequence) aren't valid Python keyword-argument *syntax* (you can't
+# write log_event(graph.node=...)), but a dict with dotted string keys can
+# still be spread via **payload — Python's **kwargs unpacking only requires
+# string keys, not valid identifiers. Each emitter spreads its metadata dict
+# into log_event's **extra so the fields land at the TOP level of the JSON
+# line (alongside service.name, event, and the four correlation IDs), per
+# the documented event schema — never nested under a "payload" key.
+#
+# agent.tool_selected, agent.tool_returned, agent.retried, and
+# agent.llm_call are owned by the sub-agents and the shared retry helper,
+# not this layer, and are intentionally not defined here yet.
+
+
+def log_agent_step_started(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by the orchestrator's route node before dispatching a step."""
+    log_event(ctx, "agent.step_started", **payload)
+
+
+def log_agent_step_completed(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by the orchestrator's advance node when a step succeeded."""
+    log_event(ctx, "agent.step_completed", **payload)
+
+
+def log_agent_step_failed(ctx: RequestContext, payload: dict) -> None:
+    """Emitted by the orchestrator's advance node when a step failed."""
+    log_event(ctx, "agent.step_failed", log_level=logging.WARNING, **payload)

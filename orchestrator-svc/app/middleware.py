@@ -50,7 +50,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 "api.request.body_too_large",
                 endpoint=request.url.path,
                 status_code=413,
-                level=logging.WARNING,
+                log_level=logging.WARNING,
             )
             error_body = ErrorResponse(
                 error="payload_too_large",
