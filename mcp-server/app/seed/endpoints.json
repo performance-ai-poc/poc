@@ -1,0 +1,28 @@
+{
+  "endpoints": [
+    {
+      "name": "get_shipment",
+      "method": "GET",
+      "path": "/shipments/by-order/{order_id}",
+      "params": ["order_id"]
+    },
+    {
+      "name": "list_shipments",
+      "method": "GET",
+      "path": "/shipments",
+      "params": ["status"]
+    },
+    {
+      "name": "create_shipment_note",
+      "method": "POST",
+      "path": "/shipments/{order_id}/notes",
+      "params": ["order_id", "note"]
+    },
+    {
+      "name": "flaky_notify",
+      "method": "POST",
+      "path": "/notify",
+      "params": ["message"]
+    }
+  ]
+}

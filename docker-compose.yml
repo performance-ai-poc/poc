@@ -1,0 +1,49 @@
+# Local stack for the MCP server: Postgres 16 + the FastMCP server.
+#
+#   docker compose up --build
+#
+# The mcp-server service seeds the database deterministically (build_seed.py) and
+# then serves all seven tools over streamable-http on :8000. Postgres data
+# persists in the named volume; the healthcheck gates the server on a ready DB.
+#
+# Placement note: created at the repo root for the POC; coordinate final location
+# with the packaging owner if the stack later merges with the orchestrator's.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - mcp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  mcp-server:
+    build: ./mcp-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Read-write DSN — used ONLY by seeding.
+      DATABASE_URL: postgresql://app:app@postgres:5432/appdb
+      # Read-only DSN — used by the tools (run_query / search_documents). The
+      # mcp_readonly role is created + granted SELECT-only by build_seed.py.
+      READONLY_DATABASE_URL: postgresql://mcp_readonly:mcp_readonly@postgres:5432/appdb
+      STATEMENT_TIMEOUT_MS: "3000"
+      MOCK_TOOL_LATENCY_MS: "0"
+      LOG_LEVEL: "INFO"
+    # Seed (idempotent) then serve over streamable-http.
+    command: ["sh", "-c", "python -m app.seed.build_seed && python -m app.server"]
+    ports:
+      - "8000:8000"
+
+volumes:
+  mcp_pgdata:
