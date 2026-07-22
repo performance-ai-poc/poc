@@ -6,9 +6,20 @@ handling that future agent, MCP, and telemetry work should build on.
 
 `POST /chat` is wired to a deterministic LangGraph orchestrator
 (`app/orchestrator/`): keyword-based routing dispatches to a DB Agent and/or
-a REST API Agent (currently stubs — see `app/agents/`), threading the four
-correlation IDs through every node and emitting structured `agent.*` log
-events along the way.
+a REST API Agent (see `app/agents/`), threading the four correlation IDs
+through every node and emitting structured `agent.*` log events along the way.
+
+The **REST API Agent** (`app/agents/api_agent.py`) is fully implemented per the
+Multi-Agent Client Architecture spec, section 4.5: it fetches an API catalog,
+plans HTTP calls with an LLM (`app/llm.py`), and executes them against the MCP
+server's http tools through the shared retry helper (`app/retry.py`), emitting
+the complete `agent.llm_call` / `agent.tool_selected` / `agent.retried` /
+`agent.tool_returned` telemetry. It has two modes, selected by
+`AGENT_LIVE_CALLS` (see Configuration): an offline deterministic default (no
+network — used by the test suite) and a live mode that calls the real
+OpenAI-compatible LLM endpoint and the real MCP server. Both modes emit
+identical telemetry. The **DB Agent** remains a stub owned by a separate
+workstream.
 
 ## Running Locally
 
@@ -149,14 +160,33 @@ Configured through environment variables or `.env`:
 - `DEFAULT_TENANT_ID` - fallback tenant when request body omits `tenant_id`.
 - `CORS_ALLOWED_ORIGINS` - comma-separated origins or `*`.
 
+REST API Agent (Agent 2) — LLM + MCP wiring:
+
+- `AGENT_LIVE_CALLS` - `false` (default) runs the agent fully in-process and
+  deterministic (no network; what tests use); `true` makes real LLM + MCP
+  calls. Both modes emit identical `agent.*` telemetry.
+- `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` - OpenAI-compatible
+  chat-completions endpoint the agent's planner uses in live mode.
+- `LLM_TIMEOUT_S` - per-call LLM timeout (default 60s; the demo model
+  `qwen3-coder-30b-a3b-instruct` is a non-reasoning instruct model that returns
+  in ~2-4s, so this is a generous ceiling).
+- `MCP_SERVER_URL` - streamable-http URL of the MCP server (default
+  `http://localhost:8000/mcp`).
+- `MCP_TIMEOUT_S` - per-call MCP timeout.
+
 ## Known Limitations
 
-- DB Agent and REST API Agent (`app/agents/`) are stubs: they simulate a
-  successful result and never call an LLM, MCP, or a real tool yet.
-- The shared retry helper (`call_tool_with_retry`) and the `agent.tool_selected`
-  / `agent.tool_returned` / `agent.retried` / `agent.llm_call` events described
-  in the design docs aren't implemented yet — there's no MCP call for them to
-  wrap until the real agents land.
+- The **DB Agent** (`app/agents/db_agent.py`) is still a stub (owned by a
+  separate workstream): it simulates a successful result and never calls an
+  LLM, MCP, or a real tool. Its tools (`get_schema` / `run_query` /
+  `search_documents`) are correspondingly not implemented on the MCP server.
+  The **REST API Agent** is fully implemented (see the overview above).
+- The shared retry helper (`app/retry.py`) and the `agent.tool_selected` /
+  `agent.tool_returned` / `agent.retried` / `agent.llm_call` events are
+  implemented and exercised by the REST API Agent (`tests/test_retry_helper.py`,
+  `tests/test_api_agent_telemetry.py`). They will cover the DB Agent's tool
+  calls too once that agent is built — the retry helper is transport-agnostic
+  and already the single retry layer.
 - The orchestrator uses abort-on-first-failure: any step failure marks the
   whole run failed and skips every remaining step, even ones that are
   logically independent of the failure (e.g. a later document-search step
