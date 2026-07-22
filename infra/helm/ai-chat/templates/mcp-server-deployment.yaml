@@ -31,3 +31,20 @@ spec:
             - name: http
               containerPort: {{ .Values.mcpServer.service.port }}
               protocol: TCP
+
+          env:
+            {{- if .Values.postgresql.enabled }}
+            # Runtime database tools receive only the read-only DSN. The
+            # read-write DSN is restricted to the one-time seed Job.
+            - name: READONLY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-chat.fullname" . }}-postgres
+                  key: READONLY_DATABASE_URL
+            {{- end }}
+            - name: STATEMENT_TIMEOUT_MS
+              value: {{ .Values.mcpServer.env.statementTimeoutMs | quote }}
+            - name: MOCK_TOOL_LATENCY_MS
+              value: {{ .Values.mcpServer.env.mockToolLatencyMs | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.mcpServer.env.logLevel | quote }}
