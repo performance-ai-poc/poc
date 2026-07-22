@@ -1,1 +1,5 @@
 mcp[cli]==1.28.1
+psycopg[binary]==3.2.3
+psycopg-pool==3.2.4
+pydantic-settings==2.7.0
+pytest==8.3.4
