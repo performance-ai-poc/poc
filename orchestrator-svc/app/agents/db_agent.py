@@ -301,11 +301,9 @@ def _document_query(instruction: str) -> str:
     return request
 
 
+@trace_agent_step
 async def db_agent_node(state: RunState) -> RunState:
     """Execute the active parent step through the DB agent."""
-
-@trace_agent_step
-def db_agent_node(state):
     step = state["steps"][state["current_step"]]
 
     if FORCE_FAILURE_TRIGGER in state["message"]:
