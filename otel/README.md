@@ -1,60 +1,123 @@
-# OTel
+# OTel — Observability plane
 
-Telemetry infrastructure for the AI chat POC — the OTel Collector, its
-capture policy, its Kubernetes deployment, and the acceptance tests that
-verify it. Owned end to end by the telemetry infrastructure workstream; see
-[`docs/BOUNDARY.md`](docs/BOUNDARY.md) for exactly what that does and does
-not include.
+End-to-end OpenTelemetry for the AI chat POC. This is the combined result of two
+workstreams:
 
-**Nothing here modifies `orchestrator-svc/` or `mcp-server/`.** Both already
-write structured JSON to their own stdout; this Collector reads that stream
-passively. See [`docs/OTEL_PLAN.md`](docs/OTEL_PLAN.md) for why that's the
-whole point.
+1. **Application instrumentation** — a vendor-neutral OTel SDK inside
+   `orchestrator-svc/` and `mcp-server/` producing real spans, metrics, and logs
+   (HTTP, agent, LLM, tool, and DB), with W3C trace context propagated across the
+   MCP boundary. Gated by `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SDK_DISABLED` — no
+   endpoint means no export, and the app is unaffected either way.
+2. **The collection plane (this folder + the Helm templates)** — a hardened OTel
+   Collector that receives that OTLP, redacts sensitive data, enforces a
+   customer capture policy, and exports to OpenObserve. Also tails stdout via
+   `filelog` as a correlation backstop, and scrapes host/pod/self metrics.
+
+The two are independent: stop the Collector and the app keeps serving requests
+and logging to stdout (fail-open, `docs/CONSTRAINTS.md` C2).
+
+## Signal flow
+
+```
+orchestrator-svc ─┐  OTLP (real spans/metrics/logs, traceparent in _meta)
+                  ├───────────────►  OTel Collector (DaemonSet / compose)
+mcp-server ───────┘                    memory_limiter → resource → k8sattributes
+        │  stdout JSON ──filelog──►     → attributes/privacy (redaction)
+        │                                → transform/limits (capture policy +
+        │                                   fail-closed allowlist + normalize)
+        │                                → filter/noise → batch
+        │                                        │ otlphttp over the bounded queue
+        ▼                                        ▼
+   (never calls the Collector)            OpenObserve  (traces + metrics + logs
+                                                        + dashboard)
+```
+
+## What the collection plane guarantees
+
+- **Metadata-only by default.** Prompts/completions (`gen_ai.input.messages` /
+  `gen_ai.output.messages`) are deleted unless the capture policy is
+  `content-approved`. `gen_ai.system_instructions` is never permitted.
+- **Redaction of what auto-instrumentation would otherwise leak** — raw SQL
+  (`db.statement` / `db.query.text` from psycopg), full outbound URLs
+  (`http.url` / `url.full` / query strings from httpx), auth headers, cookies,
+  api keys; `user.email` / `user.id` / `session.id` are hashed.
+- **Fail-closed allowlist** (C4): a span/log attribute not explicitly permitted
+  is dropped. The allowlist is comprehensive over the app's `gen_ai.*` / `app.*`
+  attributes and the standard HTTP/DB semconv the instrumentation emits.
+- **One correlation key.** Spans carry `app.run_id`; the Collector normalizes it
+  (and the other three IDs) to bare `run_id` so a span and a log line for the
+  same request join on the same field. Real trace context →
+  `correlation.confidence=high`; filelog-only logs → `medium`.
 
 ## Start here
 
-- [`docs/BOUNDARY.md`](docs/BOUNDARY.md) — what this workstream owns
-- [`docs/OTEL_PLAN.md`](docs/OTEL_PLAN.md) — what exists, what to build, build phases
-- [`docs/CONSTRAINTS.md`](docs/CONSTRAINTS.md) — hard rules (C1-C10)
-- [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) — the tests that define done
-- [`docs/SEMCONV.md`](docs/SEMCONV.md) — event-to-span mapping spec
-- [`HANDOFF.md`](HANDOFF.md) — open decisions and what other teams would need
-- [`VERIFICATION_STATUS.md`](VERIFICATION_STATUS.md) — what has and hasn't actually been run
+| Doc | What |
+|---|---|
+| [`docs/BOUNDARY.md`](docs/BOUNDARY.md) | Ownership split |
+| [`docs/OTEL_PLAN.md`](docs/OTEL_PLAN.md) | What exists / build phases |
+| [`docs/CONSTRAINTS.md`](docs/CONSTRAINTS.md) | Hard rules C1–C10 |
+| [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) | Tests that define done |
+| [`docs/SEMCONV.md`](docs/SEMCONV.md) | Event/attribute → OTel mapping |
+| [`HANDOFF.md`](HANDOFF.md) | Cross-team items and what's now resolved |
+| [`VERIFICATION_STATUS.md`](VERIFICATION_STATUS.md) | Exactly what's been run vs. only written |
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `collector-config.yaml` | Standalone Collector config (Phases 1-3): `otlp` + `filelog` receivers, the six-processor privacy/allowlist chain, `otlphttp` exporter. |
-| `docker-compose.otel.yml` | Collector + OpenObserve only — no application service. `make otel-up` / `make otel-down`. |
-| `policy/` | Capture-mode gate (`metadata-only` / `content-approved`). `policy/apply.sh <mode>` switches it. |
-| `local-logs/` | Local stand-in for the Kubernetes container-log path — bind-mounted into the Collector; a developer redirects `python -m app.main`'s stdout here by hand for local filelog testing. |
-| `tests/` | Acceptance scripts, one per `docs/ACCEPTANCE.md` criterion. Each script's header names which criterion it verifies. |
-| `docs/` | The five planning documents listed above. |
+| `collector-config.yaml` | The hardened Collector config (compose + the canonical copy the k8s ConfigMap mirrors) |
+| `docker-compose.otel.yml` | Collector + OpenObserve, telemetry plane in isolation |
+| `policy/` | Capture-mode gate (`metadata-only` / `content-approved`) + `apply.sh` |
+| `tests/` | Acceptance scripts + offline Python suites (see below) |
+| `local-logs/` | Local stand-in for the k8s container-log path (filelog source) |
 
-The Kubernetes-side Collector config lives in
-[`infra/helm/ai-chat/templates/otel-collector-*.yaml`](../infra/helm/ai-chat/templates/)
-(DaemonSet, RBAC, ConfigMap, Secret) — outside this folder because it's part
-of the Helm chart, per `docs/BOUNDARY.md`.
+The Kubernetes side is in
+[`infra/helm/ai-chat/templates/`](../infra/helm/ai-chat/templates/):
+`otel-collector-{daemonset,configmap,rbac,secret}.yaml` and
+`openobserve-{deployment,service,secret,pvc}.yaml`.
 
-## Running it locally
+## Running it
 
+**Full stack on Kubernetes (the complete, doc-compliant path):**
 ```bash
-make otel-up          # Collector + OpenObserve
-make otel-test         # the two acceptance scripts that don't need the app running
-./otel/tests/test_filelog_ingest.sh   # needs orchestrator-svc/.venv set up first
-make otel-down
+make dev            # builds images, deploys the chart incl. Collector + OpenObserve
+```
+OpenObserve is exposed on NodePort `30083`.
+
+**Local data-plane + telemetry via Compose:**
+```bash
+docker compose up --build     # Postgres + MCP + Collector + OpenObserve
+# OpenObserve UI: http://localhost:5080  (admin@example-test.invalid / otel-poc-local-only)
 ```
 
-OpenObserve UI: http://localhost:5080 (`admin@example-test.invalid` /
-`otel-poc-local-only` — local-only demo credentials, same posture the rest of
-this repo takes for Postgres).
+**Telemetry plane alone:**
+```bash
+make otel-up        # Collector + OpenObserve only (otel/docker-compose.otel.yml)
+```
 
-## Verification status
+**Switch capture policy (no application restart):**
+```bash
+./otel/policy/apply.sh content-approved
+./otel/policy/apply.sh metadata-only
+```
 
-As of this writing, most of this folder's contents have been reviewed and
-statically checked (Helm rendering, RBAC/resource assertions against the
-rendered manifests) but not run against a live Collector or cluster — Docker
-Desktop wasn't running in the environment this was built in. See
-[`VERIFICATION_STATUS.md`](VERIFICATION_STATUS.md) for exactly what has and
-hasn't been executed, and the specific risks flagged for whatever runs first.
+## Tests
+
+Offline (no Docker/cluster) — run with `orchestrator-svc`'s venv:
+```bash
+cd orchestrator-svc
+./.venv/Scripts/python.exe -m pytest \
+  ../otel/tests/test_offline_config.py \
+  ../otel/tests/test_span_contract.py \
+  ../otel/tests/test_log_contract.py \
+  ../otel/tests/test_trace_propagation.py
+```
+These validate config parity, that the app's real spans/logs are covered by the
+allowlist with nothing sensitive leaking, and that trace context round-trips
+across the MCP boundary. `test_rbac.sh` and `test_resources.sh` run static
+checks against the rendered chart.
+
+Live (need Docker/cluster): `test_collector_up.sh`, `test_redaction.sh`,
+`test_filelog_ingest.sh`, `test_policy_switch.sh`, `test_failopen.sh`,
+`test_saturation.sh`. See [`VERIFICATION_STATUS.md`](VERIFICATION_STATUS.md) for
+what has and hasn't actually been executed.

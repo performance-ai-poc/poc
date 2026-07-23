@@ -1,28 +1,45 @@
-# HANDOFF — items owed to / needed from other teams
+# HANDOFF — cross-team items
 
-This file is not a task list for this workstream. It records decisions this
-workstream does not own and integration points other teams will need. See
-`otel/docs/BOUNDARY.md` for the full ownership split.
+Records integration points and cross-team decisions. Now that the app-side SDK
+work and the collection plane are merged on this branch, several previously-open
+handoffs are **resolved** — noted first — and a couple remain.
 
-Updated at each phase boundary as new items surface. Nothing here is resolved
-unilaterally by this workstream.
+## Resolved on this combined branch
 
----
+- **OTel SDK wired into the app, exporting OTLP.** `orchestrator-svc` and
+  `mcp-server` now produce real spans/metrics/logs (`app/telemetry.py` in each).
+  The Collector's `otlp` receiver ingests them; the old "no real spans, run_id
+  only" fallback no longer applies when the SDK is enabled.
+- **`traceparent` across the MCP boundary.** Carried in the existing
+  `params._meta` channel (orchestrator `mcp_client._correlation_meta` injects;
+  mcp `telemetry.extract_context` rebuilds). The `mcp.tool` span parents on the
+  orchestrator's `execute_tool` span — one distributed trace.
+  `correlation.confidence` is stamped `high` on real spans.
+- **Content-capture gate exists.** `otel/policy/` + the Collector's
+  `transform/limits` gate `gen_ai.input.messages` / `gen_ai.output.messages` on
+  `capture.mode`. The agent team may emit content; the Collector decides whether
+  it survives — customer-controlled, no app change to toggle.
 
-## Open decisions — awaiting a joint call, not made here
+## Still open — a joint call, not decided here
 
-### 1. `service.name` naming conflict
+### 1. `service.name` — now TWO values, needs reconciling
 
-`orchestrator-svc/README.md` (see its "Open decision — `service.name` naming
-discrepancy" section) flags that the code emits `service.name: "backend-api"`
-(`orchestrator-svc/app/logging_utils.py::SERVICE_NAME`) while an earlier OTel
-design document's example event uses `service.name: "agent-orchestrator"`.
+The combined branch actually made this sharper: there are now **two**
+`service.name` values for the orchestrator, from two paths.
 
-**This workstream does not pick one.** The Collector reads `service.name`
-verbatim from whatever the application emits (via the `resource` processor,
-`otel/collector-config.yaml`) and passes it through unchanged — no Collector
-config hardcodes either string. Whichever name wins, nothing here needs to
-change.
+- The **OTLP spans/metrics** carry `service.name = "orchestrator-svc"` (the
+  resource attribute, from `OTEL_SERVICE_NAME` in the deployment env /
+  `values.yaml`).
+- The **stdout JSON logs** carry `service.name = "backend-api"`
+  (`orchestrator-svc/app/logging_utils.py::SERVICE_NAME`), which the filelog
+  path reads verbatim.
+
+So in the backend, a trace and its own service's logs are tagged with different
+service names. That is a real correlation snag for anyone building dashboards.
+The Collector does not paper over it (it passes both through as emitted), so
+whoever owns dashboards should get the two aligned — pick one value and set both
+`OTEL_SERVICE_NAME` and the logger's `SERVICE_NAME` constant to it. Not decided
+here.
 
 ### 2. `agent.*` event-name vocabulary conflict
 

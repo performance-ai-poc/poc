@@ -1,13 +1,14 @@
-# Local stack for the MCP server: Postgres 16 + FastMCP + OTLP Collector.
+# Local stack: Postgres 16 + FastMCP + the hardened OTel Collector + OpenObserve.
 #
 #   docker compose up --build
 #
-# The mcp-server service seeds the database deterministically (build_seed.py) and
-# then serves all seven tools over streamable-http on :8000. Postgres data
-# persists in the named volume; the healthcheck gates the server on a ready DB.
-#
-# Placement note: created at the repo root for the POC; coordinate final location
-# with the packaging owner if the stack later merges with the orchestrator's.
+# mcp-server seeds the DB deterministically then serves 7 tools over
+# streamable-http on :8000, exporting OTLP telemetry to the Collector. The
+# Collector runs the SAME hardened config as Kubernetes (otel/collector-config.yaml:
+# redaction, capture policy, allowlist) and exports to OpenObserve, browsable at
+# http://localhost:5080. Stopping the Collector or OpenObserve never affects the
+# app (fail-open, C2). For the full app path incl. the orchestrator + UIs, use
+# the Helm chart (make dev); this compose is the data-plane + telemetry subset.
 
 services:
   postgres:
@@ -50,14 +51,43 @@ services:
     ports:
       - "8000:8000"
 
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:v0.14.1
+    environment:
+      ZO_ROOT_USER_EMAIL: admin@example-test.invalid
+      ZO_ROOT_USER_PASSWORD: otel-poc-local-only
+      ZO_DATA_DIR: /data
+    ports:
+      - "5080:5080"
+    volumes:
+      - openobserve_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
     command: ["--config=/etc/otelcol-contrib/collector-config.yaml"]
     volumes:
       - ./otel/collector-config.yaml:/etc/otelcol-contrib/collector-config.yaml:ro
+      # Bounded, writable — file offsets + persistent export queue only (C5).
+      - otelcol_storage:/var/lib/otelcol
+    environment:
+      DEPLOYMENT_ENVIRONMENT: local-compose
+      OPENOBSERVE_ORG: default
+      # Base64("admin@example-test.invalid:otel-poc-local-only").
+      OPENOBSERVE_AUTH_HEADER: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
+      CAPTURE_MODE: metadata-only
     ports:
       - "4317:4317"
       - "4318:4318"
+    depends_on:
+      openobserve:
+        condition: service_healthy
 
 volumes:
   mcp_pgdata:
+  openobserve_data:
+  otelcol_storage:
