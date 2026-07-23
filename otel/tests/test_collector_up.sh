@@ -70,10 +70,10 @@ found=0
 for i in $(seq 1 15); do
   sleep 2
   search_response=$(curl -s -X POST \
-    "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/default/_search?type=traces" \
+    "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=traces" \
     -H "Authorization: ${OPENOBSERVE_AUTH}" \
     -H "Content-Type: application/json" \
-    -d "{\"query\":{\"sql\":\"SELECT trace_id, span_id, service_name FROM default WHERE trace_id='${TRACE_ID}'\",\"start_time\":0,\"end_time\":9999999999999999,\"size\":10}}")
+    -d "{\"query\":{\"sql\":\"SELECT trace_id, span_id, service_name FROM default WHERE trace_id='${TRACE_ID}'\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":10}}")
 
   if echo "${search_response}" | grep -q "${TRACE_ID}"; then
     found=1

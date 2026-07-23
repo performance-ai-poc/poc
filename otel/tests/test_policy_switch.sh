@@ -63,10 +63,10 @@ search_for_trace() {
   for i in $(seq 1 15); do
     sleep 2
     response=$(curl -s -X POST \
-      "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/default/_search?type=traces" \
+      "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=traces" \
       -H "Authorization: ${OPENOBSERVE_AUTH}" \
       -H "Content-Type: application/json" \
-      -d "{\"query\":{\"sql\":\"SELECT * FROM default WHERE trace_id='${trace_id}'\",\"start_time\":0,\"end_time\":9999999999999999,\"size\":10}}")
+      -d "{\"query\":{\"sql\":\"SELECT * FROM default WHERE trace_id='${trace_id}'\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":10}}")
     if echo "${response}" | grep -q "${trace_id}"; then
       echo "${response}"
       return 0

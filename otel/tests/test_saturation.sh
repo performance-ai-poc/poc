@@ -116,10 +116,10 @@ echo "    OK: otel-collector container is still running after the flood."
 echo "==> Checking for a queryable drop/refusal signal (Acceptance A13)"
 sleep 20  # let the prometheus self-scrape (15s interval) and export catch up
 metrics_response=$(curl -s -X POST \
-  "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/default/_search?type=metrics" \
+  "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=metrics" \
   -H "Authorization: ${OPENOBSERVE_AUTH}" \
   -H "Content-Type: application/json" \
-  -d "{\"query\":{\"sql\":\"SELECT * FROM default WHERE metric_name LIKE 'otelcol_%' LIMIT 50\",\"start_time\":0,\"end_time\":9999999999999999,\"size\":50}}")
+  -d "{\"query\":{\"sql\":\"SELECT * FROM default WHERE metric_name LIKE 'otelcol_%' LIMIT 50\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":50}}")
 
 if echo "${metrics_response}" | grep -q "otelcol_"; then
   echo "    OK: otelcol_* self-monitoring metrics are queryable in OpenObserve."

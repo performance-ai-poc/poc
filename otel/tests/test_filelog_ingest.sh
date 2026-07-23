@@ -98,10 +98,10 @@ found_events=""
 for i in $(seq 1 20); do
   sleep 2
   search_response=$(curl -s -X POST \
-    "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/default/_search?type=logs" \
+    "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=logs" \
     -H "Authorization: ${OPENOBSERVE_AUTH}" \
     -H "Content-Type: application/json" \
-    -d "{\"query\":{\"sql\":\"SELECT event FROM default WHERE run_id='${RUN_ID}'\",\"start_time\":0,\"end_time\":9999999999999999,\"size\":50}}")
+    -d "{\"query\":{\"sql\":\"SELECT event FROM default WHERE run_id='${RUN_ID}'\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":50}}")
 
   if echo "${search_response}" | grep -q "${RUN_ID}"; then
     found_events="${search_response}"
