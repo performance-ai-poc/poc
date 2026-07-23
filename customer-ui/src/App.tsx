@@ -1,164 +1,96 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { sendChat } from './api'
 import './App.css'
 
-type ChatRole = 'assistant' | 'user'
-
-type ChatMessage = {
-  id: string
-  role: ChatRole
-  content: string
-}
-
-type ChatResponse = {
-  reply: string
-  run_id?: string
-  request_id?: string
-  session_id?: string
-  tenant_id?: string
-}
-
-const starterMessage =
-  'Ask me about orders, shipments, or policy lookups. I will send the request to the backend chat endpoint and show the response here.'
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10)
-}
 
 function App() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: uid(), role: 'assistant', content: starterMessage },
-  ])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const [reply, setReply] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [sessionId] = useState(() => uid())
-  const endRef = useRef<HTMLDivElement | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined)
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, isLoading])
+  async function submit() {
+    const trimmed = message.trim()
+    if (!trimmed || loading) return
 
-  const canSend = useMemo(() => input.trim().length > 0 && !isLoading, [input, isLoading])
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const message = input.trim()
-    if (!message || isLoading) return
-
+    setLoading(true)
     setError(null)
-    setInput('')
-    setIsLoading(true)
-
-    const userMessage: ChatMessage = { id: uid(), role: 'user', content: message }
-    setMessages((current) => [...current, userMessage])
+    setReply(null)
 
     try {
-      const response = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          session_id: sessionId,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`)
-      }
-
-      const data = (await response.json()) as ChatResponse
-      setMessages((current) => [
-        ...current,
-        {
-          id: uid(),
-          role: 'assistant',
-          content: data.reply || 'No reply was returned.',
-        },
-      ])
+      const res = await sendChat(trimmed, sessionId)
+      setReply(res.reply)
+      // Preserve the session across turns (see customer-ui README integration note).
+      setSessionId(res.session_id)
     } catch (err) {
-      const messageText =
-        err instanceof Error ? err.message : 'Something went wrong while calling the backend.'
-      setError(messageText)
-      setMessages((current) => [
-        ...current,
-        {
-          id: uid(),
-          role: 'assistant',
-          content:
-            'I could not reach the backend just now. Please try again in a moment.',
-        },
-      ])
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
+    }
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    void submit()
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // Ctrl/Cmd + Enter sends without leaving the keyboard.
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      void submit()
     }
   }
 
   return (
-    <main className="chat-shell">
-      <section className="chat-hero">
-        <div className="brand-row">
-          <div className="brand-mark">AI</div>
-          <div>
-            <p className="eyebrow">Customer UI</p>
-            <h1>Chat with your backend</h1>
-          </div>
+    <main className="chat">
+      <header className="chat-header">
+        <span className="chat-mark" aria-hidden="true" />
+        <div>
+          <h1>AI Chat</h1>
+          <p className="subtitle">Ask a question and get a reply from the assistant.</p>
         </div>
-        <p className="hero-copy">
-          A focused chat surface that sends each prompt through the orchestrator and
-          renders responses inline, without making the page feel like a demo stub.
-        </p>
-        <div className="hero-stats" aria-label="Capabilities">
-          <span className="hero-pill">
-            <span className="hero-dot" />
-            Live backend chat
-          </span>
-          <span className="hero-pill">Orchestrator proxy</span>
-          <span className="hero-pill">Minikube-ready</span>
-        </div>
-      </section>
+      </header>
 
-      <section className="chat-panel" aria-label="Chat conversation">
-        <div className="messages">
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={`message ${message.role === 'user' ? 'message-user' : 'message-assistant'}`}
-            >
-              <div className="message-badge">
-                {message.role === 'user' ? 'You' : 'Assistant'}
-              </div>
-              <p>{message.content}</p>
-            </article>
-          ))}
-
-          {isLoading ? (
-            <article className="message message-assistant message-thinking">
-              <div className="message-badge">Assistant</div>
-              <p>Thinking...</p>
-            </article>
-          ) : null}
-          <div ref={endRef} />
-        </div>
-
-        <form className="composer" onSubmit={handleSubmit}>
+      <form className="chat-form" onSubmit={handleSubmit}>
+        <div className="chat-field">
           <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Ask a question about data, orders, shipments, or policies..."
-            rows={3}
+            className="chat-input"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message…"
+            rows={4}
+            disabled={loading}
+            autoFocus
           />
-          <div className="composer-meta">
-            <div className="status-row">
-              <span className={`status-dot ${isLoading ? 'busy' : 'idle'}`} />
-              <span>{isLoading ? 'Waiting for backend response' : 'Ready'}</span>
-            </div>
-            {error ? <span className="error-text">{error}</span> : null}
-            <button type="submit" disabled={!canSend}>
-              Send
+          <div className="chat-actions">
+            <span className="chat-hint">Ctrl / Cmd + Enter to send</span>
+            <button
+              type="submit"
+              className="chat-send"
+              disabled={loading || !message.trim()}
+            >
+              {loading ? 'Sending…' : 'Send'}
             </button>
           </div>
-        </form>
+        </div>
+      </form>
+
+      <section className="chat-output" aria-live="polite">
+        {error && <div className="chat-error" role="alert">{error}</div>}
+
+        {reply && (
+          <div className="chat-reply">
+            <span className="chat-reply-label">Reply</span>
+            <p>{reply}</p>
+          </div>
+        )}
+
+        {!error && !reply && !loading && (
+          <p className="chat-empty">Your reply will appear here.</p>
+        )}
       </section>
     </main>
   )

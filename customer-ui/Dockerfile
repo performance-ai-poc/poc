@@ -1,10 +1,10 @@
 # Stage 1: Build the application
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install --no-fund --no-audit
 
 # Copy source and build
 COPY . .
