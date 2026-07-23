@@ -12,3 +12,4 @@ include make/orchestrator.mk
 include make/mcp-server.mk
 include make/postgres.mk
 include make/port-forward.mk
+include make/otel.mk

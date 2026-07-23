@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "otel/policy/policy.schema.json",
+  "title": "OTel Collector capture policy",
+  "description": "Shape a capture policy file (metadata-only.yaml, content-approved.yaml) must match. See otel/docs/OTEL_PLAN.md Phase 3 and otel/docs/SEMCONV.md section 7. This schema is documentation/config-review tooling only — the Collector itself never reads these YAML files directly; otel/policy/apply.sh reads captureMode from one and renders it into an environment variable the Collector process picks up on next start. See otel/policy/README.md for why a Collector restart (never an application restart) is currently how a policy switch takes effect.",
+  "type": "object",
+  "required": ["captureMode"],
+  "additionalProperties": false,
+  "properties": {
+    "captureMode": {
+      "type": "string",
+      "enum": ["metadata-only", "content-approved"],
+      "description": "metadata-only (default): gen_ai.input.messages / gen_ai.output.messages are deleted before export — current behavior exactly, unconditionally, as it has been since before this policy layer existed. content-approved: those two attributes are permitted to reach the backend. gen_ai.system_instructions is excluded under every policy tier — no captureMode value re-enables it (see otel/docs/SEMCONV.md section 7)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable note on what this policy file does. Not consumed by the Collector."
+    },
+    "updatedBy": {
+      "type": "string",
+      "description": "Who/what last edited this file. Not consumed by the Collector."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this file was last edited. Not consumed by the Collector."
+    }
+  }
+}

@@ -1,0 +1,92 @@
+# Standalone local telemetry stack: Collector + OpenObserve only.
+#
+#   docker compose -f otel/docker-compose.otel.yml up --build
+#
+# This file starts nothing from the application layer and is not referenced by
+# the root docker-compose.yml, orchestrator-svc, mcp-server, or either UI.
+# Neither service below sits in any request path (C1) — orchestrator-svc and
+# mcp-server are unaware this file exists and are unaffected by whether it is
+# running (C2). See otel/docs/BOUNDARY.md and otel/docs/CONSTRAINTS.md.
+#
+# Credentials below are local-only demo values, the same posture the rest of
+# this repo already takes for Postgres (docker-compose.yml at the repo root
+# uses app/app) — not meant to survive past a laptop.
+
+services:
+  # Telemetry backend (Seam 3 in BOUNDARY.md). OTLP-native ingestion, so any
+  # OTLP-speaking Collector exporter reaches it with no translation layer.
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:v0.14.1
+    environment:
+      ZO_ROOT_USER_EMAIL: admin@example-test.invalid
+      ZO_ROOT_USER_PASSWORD: otel-poc-local-only
+      ZO_DATA_DIR: /data
+    ports:
+      - "5080:5080"
+    volumes:
+      - openobserve_data:/data
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  otel-collector:
+    # Pinned, never `latest` (C9) — Collector Contrib has been migrating
+    # component names to snake_case across recent releases; a floating tag
+    # breaks the config at an unpredictable moment.
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    command: ["--config=/etc/otelcol/collector-config.yaml"]
+    volumes:
+      - ./collector-config.yaml:/etc/otelcol/collector-config.yaml:ro
+      # Phase 2's filelog source, local-compose flavor. In Kubernetes (Phase
+      # 4) the equivalent is the real container log path
+      # (/var/log/pods/*/*/*.log), populated by the kubelet/container runtime
+      # with no cooperation needed from either application. Locally, there is
+      # no kubelet, so this bind-mounts a host directory that a developer
+      # redirects `python -m app.main`'s stdout into by hand
+      # (see otel/tests/test_filelog_ingest.sh) — the orchestrator process
+      # itself is not modified or made aware of this path; it only ever
+      # writes to its own stdout, exactly as it does today with no Collector
+      # present at all.
+      - ./local-logs:/var/log/app:ro
+      # Bounded, writable, and the only writable mount this container has
+      # (C5) — file offsets and the persistent export queue only.
+      - otelcol_storage:/var/lib/otelcol
+    environment:
+      DEPLOYMENT_ENVIRONMENT: local-compose
+      OPENOBSERVE_ORG: default
+      # Base64("admin@example-test.invalid:otel-poc-local-only"). Regenerate
+      # with `printf '<email>:<password>' | base64` if the credentials above
+      # change.
+      OPENOBSERVE_AUTH_HEADER: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
+      # Phase 3 capture policy gate (collector-config.yaml's transform/limits
+      # processor). Defaults to the safe default if otel/policy/apply.sh was
+      # never run; apply.sh sets this for real via --env-file
+      # otel/policy/.env.active, then recreates just this container so the
+      # new value is compiled into the OTTL statements that read it (env-var
+      # substitution happens once, at config load — see
+      # otel/policy/README.md).
+      CAPTURE_MODE: ${CAPTURE_MODE:-metadata-only}
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "13133:13133" # health_check extension
+    depends_on:
+      openobserve:
+        condition: service_healthy
+    mem_limit: 512m
+    mem_reservation: 224m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  openobserve_data:
+  otelcol_storage:

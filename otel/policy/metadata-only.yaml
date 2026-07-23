@@ -1,0 +1,13 @@
+# Default policy — current behavior exactly (docs/OTEL_PLAN.md Phase 3).
+# Shape defined by policy.schema.json.
+captureMode: metadata-only
+description: >
+  gen_ai.input.messages and gen_ai.output.messages are deleted by the
+  Collector's transform/limits processor before export (collector-config.yaml).
+  This is the only policy that has ever been active in this repo's history —
+  every existing application-side guarantee (docs/ACCEPTANCE.md E1-E9)
+  already behaves this way regardless of whether this policy layer exists at
+  all. Applying this file changes nothing observable if it was already the
+  active mode.
+updatedBy: otel-infrastructure-workstream
+updatedAt: "2026-07-23T00:00:00Z"

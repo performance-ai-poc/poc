@@ -1,5 +1,30 @@
-# The application services send OTLP here. Backend-specific exporters can be
-# added later without changing application code.
+# OpenTelemetry Collector configuration — telemetry infrastructure only.
+#
+# Owned by the OTel infrastructure workstream (see docs/BOUNDARY.md). Nothing
+# in this file sits in any application's request path (C1, docs/CONSTRAINTS.md):
+# the orchestrator and MCP server never call anything here — they write JSON to
+# their own stdout regardless of whether this Collector exists, is reachable,
+# or is running at all. Stopping this Collector produces a telemetry gap, never
+# a failed request (C2).
+#
+# Phase 1: only the `otlp` receiver was wired into a pipeline, verified with a
+# hand-crafted span sent by `otel/tests/test_collector_up.sh`.
+#
+# Phase 2 (this file, current state): adds the `filelog` receiver below,
+# reading the two services' stdout with ZERO change to either service — both
+# already write one JSON object per line to their own stdout today, with no
+# knowledge that a Collector exists. Locally, `otel/docker-compose.otel.yml`
+# bind-mounts `otel/local-logs/` (a developer redirects `python -m app.main`'s
+# stdout into a file there by hand — see `otel/tests/test_filelog_ingest.sh`).
+# In Kubernetes (Phase 4), the equivalent is the real container log path
+# (`/var/log/pods/*/*/*.log`), populated by the kubelet with no cooperation
+# needed from either application either. Phase 4 adds `k8sattributes` /
+# `kubeletstats` — deliberately not present yet; both fail confusingly
+# outside a real cluster.
+#
+# Collector image is pinned in otel/docker-compose.otel.yml and
+# infra/helm/ai-chat/values.yaml (Phase 4) — never `latest` (C9).
+
 receivers:
   otlp:
     protocols:
@@ -8,28 +33,377 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # Phase 5 / Acceptance A13 ("dropped-record counts and queue-saturation
+  # metrics are queryable — the system reports its own data loss rather than
+  # hiding it"): scrapes this same Collector process's own internal
+  # Prometheus metrics (exposed via service.telemetry.metrics.address below)
+  # and ships them through the ordinary metrics pipeline, so
+  # otelcol_processor_refused_* / otelcol_exporter_enqueue_failed_* /
+  # otelcol_exporter_queue_size are queryable in OpenObserve exactly like any
+  # other telemetry this Collector handles — self-monitoring, not a separate
+  # side channel.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otelcol-self
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["0.0.0.0:8888"]
+
+  # Reads the exact JSON shape orchestrator-svc/app/logging_utils.py and
+  # mcp-server/app/logging_utils.py already write — one object per line, both
+  # already carrying run_id/request_id/session_id/tenant_id/service.name/event
+  # (see both files' _JsonFormatter). Nothing below tells either application
+  # anything or requires it to change: this receiver is a passive reader of a
+  # log stream that exists identically whether or not this Collector runs.
+  filelog:
+    include:
+      - /var/log/app/*.log
+    # "beginning" is a local-demo convenience — it makes a log file that
+    # already has lines in it (e.g. from before the Collector started)
+    # immediately visible, which is what makes test_filelog_ingest.sh usable
+    # without a precise start-up race.
+    start_at: beginning
+    # Persist read offsets in the same bounded file_storage extension the
+    # export queue uses (/var/lib/otelcol). With this, a Collector restart
+    # resumes where it left off instead of re-ingesting from `start_at` —
+    # matching the v2 design's filelog config. Even with start_at: beginning,
+    # the "beginning" only applies to a file the Collector has never seen; a
+    # tracked file resumes at its stored offset.
+    storage: file_storage
+    operators:
+      # parse_to: attributes (not the default `body`) does the field
+      # promotion in one step: every key in the application's flat JSON
+      # object — run_id, request_id, session_id, tenant_id, service.name,
+      # event, and everything else (graph.node, model_id, tool_name, ...) —
+      # becomes a top-level record attribute. This is deliberately broader
+      # than the six fields BUILD_PROMPT.md names as the Phase 2 minimum: the
+      # transform/limits processor's log_statements (below) reference several
+      # of the additional fields (model_id, tool_name, agent, error_type, ...)
+      # to apply the SEMCONV.md §3 mapping, and transform/limits' own
+      # keep_keys() call is what actually enforces the allowlist afterward —
+      # so nothing un-allowlisted survives regardless of how much this step
+      # promotes.
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%dT%H:%M:%S.%f%z'
+      # The record's native Timestamp field now carries this (set by the
+      # timestamp block above); keeping it as a duplicate string attribute
+      # too would be redundant and is not one of the fields BUILD_PROMPT.md
+      # or SEMCONV.md ask to preserve as an attribute.
+      - type: remove
+        field: attributes.timestamp
+
 processors:
+  # 1. Shed load before anything else allocates. Must run first — this is the
+  # one ordering rule that protects the Collector itself, independent of any
+  # privacy concern (C6: bounded resources).
   memory_limiter:
     check_interval: 1s
-    limit_mib: 256
+    limit_mib: 400
+    spike_limit_mib: 100
+
+  # 2. Attach deployment-level resource attributes. Purely descriptive — no
+  # redaction responsibility lives here, so it is safe for this to run before
+  # the privacy processor.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:DEPLOYMENT_ENVIRONMENT}
+        action: upsert
+      - key: collector.name
+        value: ai-chat-poc-otel-collector
+        action: upsert
+
+  # 3. Named-field redaction (C3). Every key here is one of the exact
+  # attribute names CONSTRAINTS.md §C3 lists as excluded-by-default or
+  # hash-instead-of-passthrough. This is deliberately a denylist of *known*
+  # sensitive fields — defense in depth ahead of the allowlist below, so a
+  # sensitive value is neutralized by name before the allowlist pass even
+  # runs. Must run before `batch`/the exporter so unredacted data structurally
+  # cannot leave (per BUILD_PROMPT.md's stated ordering rationale).
+  #
+  # `gen_ai.input.messages` / `gen_ai.output.messages` are deliberately NOT
+  # deleted here — the `attributes` processor type has no conditional
+  # capability, and those two are capture.mode-gated (Phase 3: metadata-only
+  # deletes them, content-approved permits them). Their deletion condition
+  # lives in transform/limits below, which can express "delete unless
+  # content-approved". `gen_ai.system_instructions` stays here: no policy
+  # tier permits it (docs/OTEL_PLAN.md Phase 3 / docs/SEMCONV.md §7 —
+  # content-approved names only input/output messages), so it is
+  # unconditionally excluded regardless of capture.mode, same as before
+  # Phase 3.
+  attributes/privacy:
+    actions:
+      - key: gen_ai.system_instructions
+        action: delete
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: api_key
+        action: delete
+      # Raw SQL from the psycopg auto-instrumentation the app SDK enables
+      # (mcp-server server.py PsycopgInstrumentor). The application's own
+      # logging is careful never to log raw SQL (metadata-only, tested); the
+      # auto-instrumentation would otherwise put it right back on a span as
+      # db.statement / db.query.text. Delete both — this is the single most
+      # important redaction the combined design adds over either branch alone.
+      - key: db.statement
+        action: delete
+      - key: db.query.text
+        action: delete
+      # httpx client spans carry the full outbound URL; drop the query string
+      # and full URL (may embed user-derived values), keep url.path/server.*
+      # via the allowlist instead.
+      - key: url.full
+        action: delete
+      - key: url.query
+        action: delete
+      - key: user.email
+        action: hash
+      - key: user.id
+        action: hash
+      - key: session.id
+        action: hash
+
+  # 4. Allowlist enforcement + value/shape limits (C4, C6). `keep_keys` is the
+  # actual allowlist control: anything not named here is dropped, regardless
+  # of whether step 3 above knew to name it specifically. This is what makes
+  # C4 a true allowlist rather than "delete the sensitive fields we thought
+  # of" — an attribute nobody wrote a rule for is removed by default, not
+  # passed through by default.
+  #
+  # ============================================================================
+  # SINGLE MAPPING TABLE — existing event attribute name -> OTel attribute name.
+  # Mirrors docs/SEMCONV.md §3-4. Every name this pipeline knows about is
+  # listed exactly once, here. If the open service.name / agent.* event-name
+  # decision (docs/SEMCONV.md §2, otel/HANDOFF.md) resolves differently, this
+  # table — not the receivers, not the tests — is the one place that changes.
+  #
+  #   Raw field (as logged today)          -> OTel attribute (kept as-is if same)
+  #   ------------------------------------    --------------------------------
+  #   run_id, request_id,
+  #   session_id, tenant_id                -> unchanged (business correlation IDs)
+  #   service.name, event                  -> unchanged
+  #   graph.node, step.sequence,
+  #   call.sequence, instruction_digest,
+  #   args_digest, attempt, retry.attempt,
+  #   status_code, row_count, exec_ms,
+  #   count, endpoint_count, retrieval_ids,
+  #   retryable, duration_ms, latency_ms,
+  #   status (tool-call success/error),
+  #   reason (tool-error/retry category)   -> unchanged (SEMCONV.md: "keep as-is").
+  #     status/reason are emitted by app/retry.py on agent.tool_returned (error)
+  #     and agent.retried; both metadata-only (a short category string, never a
+  #     raw message). Added after test_log_contract.py caught them being dropped.
+  #   agent                                -> gen_ai.agent.name
+  #   error_type                           -> error.type
+  #   model_id                             -> gen_ai.request.model
+  #   input_tokens                         -> gen_ai.usage.input_tokens
+  #   output_tokens                        -> gen_ai.usage.output_tokens
+  #   tool_name                            -> gen_ai.tool.name
+  #   endpoint (api.request.* events only) -> http.route
+  #   status_code (api.request.* events)   -> also copied to http.response.status_code
+  #                                            (kept under both names: SEMCONV.md's
+  #                                            "keep as-is" applies to the tool-call
+  #                                            sense of status_code; the HTTP sense
+  #                                            gets the semconv name in addition)
+  #   -- not yet emitted by any application code; allowlisted so they pass
+  #      through the moment either team adds them, with no Collector change --
+  #   route.reason_code, gen_ai.provider.name, gen_ai.operation.name,
+  #   gen_ai.tool.type, capture.mode, correlation.confidence,
+  #   trace_id, span_id  (real spans only — see docs/ACCEPTANCE.md A6: the
+  #      existing stdout JSON payload must never carry these; that is an
+  #      application-side guarantee this pipeline does not need to enforce,
+  #      only avoid interfering with once real spans exist)
+  #   -- capture.mode-gated (Phase 3, otel/policy/): allowlisted so
+  #      content-approved mode can keep them; metadata-only deletes them
+  #      below before the allowlist even runs --
+  #   gen_ai.input.messages, gen_ai.output.messages
+  # ============================================================================
+  #
+  # CAPTURE_MODE is set once at Collector container start (otel/docker-compose.otel.yml
+  # / infra/helm/ai-chat's Collector env, Phase 4) from whichever policy file
+  # otel/policy/apply.sh last applied. ${env:...} is resolved by the Collector's
+  # config loader before the OTTL statements below are even parsed, so the
+  # *value* compiled into each `where` clause is fixed for the process's
+  # lifetime — switching policy therefore restarts the Collector container
+  # (a telemetry gap, per C2 — never the application; see otel/policy/README.md)
+  # rather than being a true zero-downtime hot-reload.
+  transform/limits:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["capture.mode"], "${env:CAPTURE_MODE}")
+          - delete_key(attributes, "gen_ai.input.messages") where attributes["capture.mode"] != "content-approved"
+          - delete_key(attributes, "gen_ai.output.messages") where attributes["capture.mode"] != "content-approved"
+          # Normalize the app SDK's app.<id> correlation attributes onto the
+          # bare names the filelog/log path uses, so a span and a log line for
+          # the same request join on the SAME field (run_id, ...) in the
+          # backend. The app.<id> forms are then dropped by the allowlist
+          # below; the non-id app.* attributes (app.outcome, app.latency_ms,
+          # ...) are kept.
+          - set(attributes["run_id"], attributes["app.run_id"]) where attributes["app.run_id"] != nil
+          - set(attributes["request_id"], attributes["app.request_id"]) where attributes["app.request_id"] != nil
+          - set(attributes["session_id"], attributes["app.session_id"]) where attributes["app.session_id"] != nil
+          - set(attributes["tenant_id"], attributes["app.tenant_id"]) where attributes["app.tenant_id"] != nil
+          # Real trace context is present on spans, so correlation is observed,
+          # not inferred (docs/SEMCONV.md §6).
+          - set(attributes["correlation.confidence"], "high") where attributes["run_id"] != nil
+          # Comprehensive, fail-closed allowlist for spans (C4). Covers the
+          # app's own gen_ai/app.* attributes, error.type, and the standard
+          # HTTP/DB semconv attributes the FastAPI/httpx/psycopg
+          # auto-instrumentation emits — but NOT db.statement/db.query.text/
+          # url.full/url.query/headers (deleted above) or content messages
+          # (gated above). A span attribute not listed here is dropped.
+          - keep_keys(attributes, ["run_id", "request_id", "session_id", "tenant_id",
+              "gen_ai.conversation.id",
+              "gen_ai.operation.name", "gen_ai.agent.name", "gen_ai.provider.name",
+              "gen_ai.request.model", "gen_ai.response.model",
+              "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens",
+              "gen_ai.tool.name", "gen_ai.tool.type", "gen_ai.data_source.id",
+              "gen_ai.workflow.name",
+              "app.outcome", "app.latency_ms", "app.call.type", "app.retryable",
+              "app.failure.category", "app.agent.step.sequence",
+              "app.agent.call.sequence", "app.retry.attempt", "app.tool.args_digest",
+              "error.type",
+              "http.request.method", "http.route", "http.response.status_code",
+              "url.scheme", "url.path", "server.address", "server.port",
+              "network.protocol.version", "client.address",
+              "db.system", "db.system.name", "db.namespace", "db.operation.name",
+              "db.collection.name",
+              "capture.mode", "correlation.confidence",
+              "gen_ai.input.messages", "gen_ai.output.messages"])
+          - truncate_all(attributes, 4096)
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["capture.mode"], "${env:CAPTURE_MODE}")
+          - delete_key(attributes, "gen_ai.input.messages") where attributes["capture.mode"] != "content-approved"
+          - delete_key(attributes, "gen_ai.output.messages") where attributes["capture.mode"] != "content-approved"
+          # Rename the unambiguous fields (SEMCONV.md §3) — safe regardless of
+          # which event emitted them, so no `where` guard needed.
+          - set(attributes["gen_ai.agent.name"], attributes["agent"]) where attributes["agent"] != nil
+          - set(attributes["error.type"], attributes["error_type"]) where attributes["error_type"] != nil
+          - set(attributes["gen_ai.request.model"], attributes["model_id"]) where attributes["model_id"] != nil
+          - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"]) where attributes["input_tokens"] != nil
+          - set(attributes["gen_ai.usage.output_tokens"], attributes["output_tokens"]) where attributes["output_tokens"] != nil
+          - set(attributes["gen_ai.tool.name"], attributes["tool_name"]) where attributes["tool_name"] != nil
+          - set(attributes["gen_ai.operation.name"], "invoke_agent") where IsMatch(attributes["event"], "^agent\\.step_")
+          - set(attributes["gen_ai.operation.name"], "chat") where attributes["event"] == "agent.llm_call"
+          - set(attributes["gen_ai.operation.name"], "execute_tool") where IsMatch(attributes["event"], "^agent\\.(tool_selected|tool_returned|retried)$")
+          - set(attributes["gen_ai.tool.type"], "mcp") where IsMatch(attributes["event"], "^agent\\.(tool_selected|tool_returned|retried)$")
+          # endpoint / status_code are only renamed for api.request.* events —
+          # the same raw field names mean something different on agent.* tool
+          # events (SEMCONV.md §3's execute_tool row keeps status_code as-is
+          # there), so this rename is scoped by event prefix, not unconditional.
+          - set(attributes["http.route"], attributes["endpoint"]) where IsMatch(attributes["event"], "^api\\.request\\.")
+          - set(attributes["http.response.status_code"], attributes["status_code"]) where IsMatch(attributes["event"], "^api\\.request\\.")
+          - keep_keys(attributes, ["run_id", "request_id", "session_id", "tenant_id",
+              "service.name", "event", "graph.node", "step.sequence", "call.sequence",
+              "instruction_digest", "args_digest", "attempt", "retry.attempt",
+              "status_code", "row_count", "exec_ms", "count", "endpoint_count",
+              "retrieval_ids", "retryable", "duration_ms", "latency_ms", "status", "reason",
+              "gen_ai.agent.name", "error.type", "gen_ai.request.model",
+              "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens",
+              "gen_ai.tool.name", "gen_ai.operation.name", "gen_ai.tool.type",
+              "http.route", "http.response.status_code",
+              "route.reason_code", "gen_ai.provider.name",
+              "capture.mode", "correlation.confidence",
+              "gen_ai.input.messages", "gen_ai.output.messages"])
+          - truncate_all(attributes, 4096)
+          - set(attributes["correlation.confidence"], "medium") where attributes["run_id"] != nil and attributes["correlation.confidence"] == nil
+
+  # 5. Drop non-records: malformed lines that failed the filelog receiver's
+  # JSON parse (Phase 2) never carry an `event` attribute; nothing about them
+  # is useful telemetry. Traces have no equivalent noise source yet at Phase 1
+  # (a hand-crafted test span always has a name), so the trace condition below
+  # is a no-op today and only matters once something other than the manual
+  # Phase-1 verification sends traces.
+  filter/noise:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["event"] == nil'
+    traces:
+      span:
+        - 'name == ""'
+
+  # 6. Batch last, immediately before export, so every record leaving this
+  # pipeline has already passed privacy + allowlist + limits.
   batch:
-    timeout: 5s
+    timeout: 3s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # Backs the exporter's persistent sending queue below. Read-write, but
+  # bounded and narrow (CONSTRAINTS.md C5: "/var/lib/otelcol — file offsets and
+  # persistent queue only" is the one writable, host-adjacent path this
+  # Collector needs; everything else it touches is read-only, see Phase 4).
+  file_storage:
+    directory: /var/lib/otelcol
+    timeout: 1s
 
 exporters:
-  debug:
-    verbosity: detailed
+  otlphttp:
+    # OpenObserve's OTLP ingestion path is /api/<org>/v1/{traces,logs,metrics};
+    # the otlphttp exporter appends the per-signal suffix automatically.
+    endpoint: http://openobserve:5080/api/${env:OPENOBSERVE_ORG}
+    headers:
+      Authorization: ${env:OPENOBSERVE_AUTH_HEADER}
+    sending_queue:
+      enabled: true
+      queue_size: 5000
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      # Bounded, not infinite (C2: "no unbounded retry"). Once elapsed, the
+      # queue — itself bounded at queue_size above — is what absorbs an
+      # extended backend outage (A12); beyond both bounds, records drop
+      # rather than growing disk usage or memory without limit.
+      max_elapsed_time: 120s
 
 service:
+  extensions: [health_check, file_storage]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]
+      processors: [memory_limiter, resource, attributes/privacy, transform/limits, filter/noise, batch]
+      exporters: [otlphttp]
     logs:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]
+      # otlp is included here too so that once the orchestrator team wires an
+      # OTel SDK with a logs exporter (unlikely, but the receiver already
+      # accepts it — see otel/HANDOFF.md), it lands in the same pipeline as
+      # the filelog-derived records without a config change.
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, resource, attributes/privacy, transform/limits, filter/noise, batch]
+      exporters: [otlphttp]
+    # Self-monitoring only (A13) — the Collector's own internal metrics
+    # (queue size, refused/dropped counts), never application data, so this
+    # skips attributes/privacy and transform/limits entirely: there is
+    # nothing for either to redact or map here.
+    metrics:
+      receivers: [prometheus]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp]
+  telemetry:
+    logs:
+      level: info
+    # Exposes the Prometheus endpoint the `prometheus` receiver above
+    # scrapes from itself. Loopback-only in intent (0.0.0.0 because the
+    # scrape target is configured as 0.0.0.0:8888 above, within the same
+    # container/pod — never exposed as a published port in
+    # otel/docker-compose.otel.yml or the DaemonSet's hostPort list).
+    metrics:
+      address: 0.0.0.0:8888

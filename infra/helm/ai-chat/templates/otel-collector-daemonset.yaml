@@ -1,0 +1,183 @@
+{{- if .Values.otelCollector.enabled }}
+# One Collector per node (docs/CONSTRAINTS.md C8: "independently deployed
+# node Collectors" — this is that design, not a centralized gateway). No
+# tail sampling is configured anywhere in this chart's Collector config,
+# consistent with C8: a node-local Collector only ever sees a fraction of
+# any distributed trace.
+#
+# Security posture (docs/CONSTRAINTS.md C5):
+#   - every hostPath volume below is mounted readOnly: true
+#   - runAsNonRoot, allowPrivilegeEscalation: false, all capabilities dropped
+#   - RBAC (otel-collector-rbac.yaml) grants get/list/watch only, no Secrets
+#     API access, no exec
+#   - the one writable path (/var/lib/otelcol — file offsets + persistent
+#     export queue) is an emptyDir with an explicit size bound, not a
+#     hostPath, so it never touches node-persistent storage
+#
+# This chart's Restricted-Pod-Security-Standard status: hostPath volumes are
+# forbidden outright under the Restricted profile. This DaemonSet cannot run
+# under Restricted as a result — read-only + non-root + no-capabilities is
+# the lowest-risk configuration available while still reading container
+# logs off the node, not a zero-risk one. See docs/CONSTRAINTS.md C5's own
+# note on this trade-off.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "ai-chat.fullname" . }}-otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        # Forces a rollout when the ConfigMap content changes — otherwise a
+        # `helm upgrade` that only edits collector-config.yaml would leave
+        # already-running Collector pods on the old config indefinitely,
+        # since kubelet's ConfigMap-volume sync is not instantaneous and
+        # this Collector does not hot-reload its own config either way
+        # (otel/policy/README.md explains the same limitation for capture
+        # policy specifically).
+        checksum/config: {{ include (print $.Template.BasePath "/otel-collector-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "ai-chat.fullname" . }}-otel-collector
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: otel-collector
+          image: "{{ .Values.otelCollector.image.repository }}:{{ .Values.otelCollector.image.tag }}"
+          imagePullPolicy: {{ .Values.otelCollector.image.pullPolicy }}
+          args:
+            - "--config=/etc/otelcol/collector-config.yaml"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CAPTURE_MODE
+              value: {{ .Values.otelCollector.captureMode | quote }}
+            - name: OPENOBSERVE_AUTH_HEADER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-chat.fullname" . }}-otel-collector
+                  key: OPENOBSERVE_AUTH_HEADER
+          ports:
+            # hostPort, not a ClusterIP Service: each application pod on a
+            # given node reaches THAT node's own Collector (via the
+            # Kubernetes Downward API's status.hostIP, once the
+            # orchestrator team wires an SDK — otel/HANDOFF.md), matching
+            # the per-node design C8 requires. A ClusterIP Service here
+            # would load-balance across nodes and defeat that.
+            - name: otlp-grpc
+              containerPort: 4317
+              hostPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              hostPort: 4318
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          resources:
+            requests:
+              cpu: {{ .Values.otelCollector.resources.requests.cpu }}
+              memory: {{ .Values.otelCollector.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.otelCollector.resources.limits.cpu }}
+              memory: {{ .Values.otelCollector.resources.limits.memory }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: varlogcontainers
+              mountPath: /var/log/containers
+              readOnly: true
+            # Host /proc and /sys for the hostmetrics receiver
+            # (otel-collector-configmap.yaml, root_path: /hostfs). Read-only,
+            # and only these two paths — not the whole host root
+            # (docs/CONSTRAINTS.md C5 narrowest-path). This is why the
+            # hostmetrics scraper set excludes disk/filesystem, which would
+            # need real mountpoint visibility.
+            - name: hostfs-proc
+              mountPath: /hostfs/proc
+              readOnly: true
+            - name: hostfs-sys
+              mountPath: /hostfs/sys
+              readOnly: true
+            # The one writable, bounded path this Collector needs
+            # (docs/CONSTRAINTS.md C5) — file offsets and the persistent
+            # export queue only. emptyDir with a size limit, not a hostPath:
+            # node-local scratch space, never node-persistent storage, and
+            # gone if the pod is rescheduled (acceptable — losing queued,
+            # not-yet-exported telemetry on a node loss is a bounded
+            # telemetry gap, not a customer-facing failure, per C2).
+            - name: otelcol-storage
+              mountPath: /var/lib/otelcol
+            # readOnlyRootFilesystem: true (above) means the Collector's own
+            # process needs a writable /tmp for anything it might scratch to
+            # outside the two paths above.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ai-chat.fullname" . }}-otel-collector
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+            type: DirectoryOrCreate
+        - name: varlogcontainers
+          hostPath:
+            path: /var/log/containers
+            type: DirectoryOrCreate
+        - name: hostfs-proc
+          hostPath:
+            path: /proc
+            type: Directory
+        - name: hostfs-sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: otelcol-storage
+          emptyDir:
+            sizeLimit: {{ .Values.otelCollector.queue.sizeLimit }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}

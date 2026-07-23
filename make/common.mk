@@ -26,6 +26,13 @@ help:
 	@echo "  make rollout-postgres"
 	@echo "  make logs-postgres"
 	@echo "  make reset-stack"
+	@echo ""
+	@echo "Telemetry (otel/, standalone — not part of make dev):"
+	@echo "  make otel-up"
+	@echo "  make otel-down"
+	@echo "  make otel-logs"
+	@echo "  make otel-status"
+	@echo "  make otel-test"
 
 .PHONY: doctor
 doctor:
