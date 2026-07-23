@@ -23,6 +23,11 @@ import httpx
 import pytest
 
 from app import mcp_client
+from app.agents.db.validation import (
+    validate_document_result,
+    validate_query_result,
+    validate_schema_result,
+)
 from app.context import RequestContext
 from app.mcp_client import (
     _OFFLINE_SHIPMENTS,
@@ -304,3 +309,39 @@ def test_offline_fail_next_can_arm_any_tool():
     _run(_call_tool_offline("fail_next", {"tool": "list_endpoints", "count": 1}))
     with pytest.raises(McpToolError):
         _run(_call_tool_offline("list_endpoints", {}))
+
+
+# ---------------------------------------------------------------------------
+# Offline DB tools — validated against the DB agent's own contracts, since the
+# DB agent (app/agents/db) is the consumer of these three tools.
+# ---------------------------------------------------------------------------
+
+
+def test_offline_get_schema_matches_db_contract():
+    result = _run(_call_tool_offline("get_schema", {"tables": ["orders", "shipments", "unknown"]}))
+    schema = validate_schema_result(result)  # raises if the shape is wrong
+    assert [c.column for c in schema.tables["orders"]][:3] == ["id", "customer_id", "status"]
+    # An unknown table comes back with an empty column list, like the live tool.
+    assert schema.tables["unknown"] == []
+
+
+def test_offline_run_query_failed_orders_last_week():
+    sql = "SELECT id, status FROM orders WHERE status = 'failed' AND created_at >= now() - interval '7 days'"
+    result = _run(_call_tool_offline("run_query", {"sql": sql}))
+    parsed = validate_query_result(result)
+    assert parsed.row_count == 3
+    assert [row["id"] for row in parsed.rows] == [1001, 1002, 1003]
+
+
+def test_offline_run_query_selects_table_by_from_clause():
+    customers = validate_query_result(_run(_call_tool_offline("run_query", {"sql": "SELECT * FROM customers"})))
+    assert {row["name"] for row in customers.rows} == {"Acme Robotics", "Globex Logistics", "Initech Retail"}
+    shipments = validate_query_result(_run(_call_tool_offline("run_query", {"sql": "SELECT * FROM shipments"})))
+    assert all("tracking_number" in row for row in shipments.rows)
+
+
+def test_offline_search_documents_matches_db_contract():
+    result = _run(_call_tool_offline("search_documents", {"query": "escalation policy"}))
+    parsed = validate_document_result(result)
+    assert parsed.retrieval_ids == ["doc_007#chunk_1"]
+    assert parsed.count == 1
