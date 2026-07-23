@@ -42,7 +42,7 @@ from app.tools.control import fail_next
 from app.tools.db_tools import get_schema, run_query, search_documents
 from app.tools.errors import RETRYABLE_MARKER, RetryableToolError
 from app.tools.http_tools import http_get, http_post, list_endpoints
-from app.telemetry import record_error, span_attributes, tool_count, tracer
+from app.telemetry import extract_context, record_error, span_attributes, tool_count, tracer
 
 # Keys we lift out of a tool's result dict into the mcp.response log line. All
 # are safe, non-PII metadata (counts, timings, status codes, opaque chunk IDs) —
@@ -97,7 +97,14 @@ def instrument(name: str):
             log_event(ids, "mcp.request", tool=name, args_digest=args_digest(call_args))
 
             start = time.perf_counter()
-            span = tracer.start_span("mcp.tool", attributes=span_attributes(ids, name))
+            # Parent the tool span on the orchestrator's execute_tool span when
+            # the client carried W3C trace context in _meta (one distributed
+            # trace); falls back to a new root span (correlated by run_id) when
+            # it didn't. See app/telemetry.extract_context.
+            parent_context = extract_context(ctx)
+            span = tracer.start_span(
+                "mcp.tool", context=parent_context, attributes=span_attributes(ids, name)
+            )
             span_token = otel_context.attach(set_span_in_context(span))
             try:
                 if settings.mock_tool_latency_ms > 0:

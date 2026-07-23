@@ -51,8 +51,17 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: {{ .Values.orchestrator.env.otelServiceName | quote }}
 
+            # The Collector is a DaemonSet exposed on each node's hostPort, so
+            # a pod sends to the Collector on ITS OWN node via the node IP
+            # (docs/CONSTRAINTS.md C8 per-node design) — not a load-balanced
+            # Service. Async BatchSpanProcessor + no endpoint = fail-open: if the
+            # node Collector is down, spans drop, the app is unaffected.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ .Values.orchestrator.env.otelExporterOtlpEndpoint | default (printf "http://%s-otel-collector:4317" (include "ai-chat.fullname" .)) | quote }}
+              value: {{ .Values.orchestrator.env.otelExporterOtlpEndpoint | default "http://$(HOST_IP):4317" | quote }}
 
             - name: OTEL_TRACES_EXPORTER
               value: "otlp"

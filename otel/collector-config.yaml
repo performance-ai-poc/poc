@@ -163,6 +163,13 @@ processors:
         action: delete
       - key: url.query
         action: delete
+      # Old-semconv URL-bearing attributes from the FastAPI/httpx
+      # instrumentation (this version emits pre-stable http.* names). Same
+      # treatment as url.full/url.query — they can carry a full URL/query.
+      - key: http.url
+        action: delete
+      - key: http.target
+        action: delete
       - key: user.email
         action: hash
       - key: user.id
@@ -275,6 +282,9 @@ processors:
               "http.request.method", "http.route", "http.response.status_code",
               "url.scheme", "url.path", "server.address", "server.port",
               "network.protocol.version", "client.address",
+              "http.method", "http.status_code", "http.host", "http.scheme",
+              "http.user_agent", "http.flavor", "http.server_name",
+              "net.host.port", "net.peer.ip", "net.peer.port", "asgi.event.type",
               "db.system", "db.system.name", "db.namespace", "db.operation.name",
               "db.collection.name",
               "capture.mode", "correlation.confidence",
