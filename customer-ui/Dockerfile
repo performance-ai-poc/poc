@@ -14,6 +14,7 @@ RUN npm run build
 FROM nginx:alpine
 # Copy the built assets to Nginx's public directory
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Expose port 80 (Standard for web containers)
 EXPOSE 80

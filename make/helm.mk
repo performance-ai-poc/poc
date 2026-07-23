@@ -6,7 +6,7 @@ HELM_IMAGE_VALUES := \
 
 HELM_RUNTIME_VALUES := \
 	--set-string orchestrator.env.appEnv=$(APP_ENV) \
-	--set-string orchestrator.env.host=$(HOST) \
+	--set-string orchestrator.env.host=0.0.0.0 \
 	--set-string orchestrator.env.port=$(PORT) \
 	--set-string orchestrator.env.logLevel=$(LOG_LEVEL) \
 	--set-string orchestrator.env.agentLiveCalls=$(AGENT_LIVE_CALLS) \

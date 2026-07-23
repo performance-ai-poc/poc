@@ -25,6 +25,9 @@ spec:
         - name: customer-ui
           image: "{{ .Values.customerUi.image.repository }}:{{ .Values.customerUi.image.tag }}"
           imagePullPolicy: {{ .Values.customerUi.image.pullPolicy }}
+          env:
+            - name: ORCHESTRATOR_CHAT_URL
+              value: {{ printf "http://%s-orchestrator:%v/chat" (include "ai-chat.fullname" .) .Values.orchestrator.service.port | quote }}
 
           ports:
             - name: http

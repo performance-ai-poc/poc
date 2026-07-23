@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "development"
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8001
     log_level: str = "INFO"
 
