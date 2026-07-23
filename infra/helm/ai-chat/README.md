@@ -5,6 +5,7 @@ Application chart for the local AI chat POC deployment.
 It currently deploys:
 
 - `customer-ui` as a NodePort service on port `30080`.
+- Optional Ingress for `customer-ui` on a configurable host.
 - `orchestrator-svc` as a NodePort service on port `30081`.
 - `dashboard-ui` as a NodePort service on port `30082`.
 - `mcp-server` as a ClusterIP service on port `8000`.
@@ -23,6 +24,34 @@ make helm-template
 make deploy
 make uninstall
 ```
+
+## Customer UI Ingress
+
+The customer UI already serves the built React app through Nginx inside the
+pod. If you want to expose it without port-forwarding, enable the optional
+Ingress and point a local host name at Minikube:
+
+```yaml
+customerUi:
+  ingress:
+    enabled: true
+    host: customer.local
+```
+
+Then:
+
+```bash
+minikube addons enable ingress
+minikube ip
+```
+
+Add the Minikube IP to `/etc/hosts` for `customer.local`, then redeploy:
+
+```bash
+make deploy
+```
+
+Open `http://customer.local` in your browser.
 
 For Postgres operations in Minikube:
 
