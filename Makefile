@@ -1,6 +1,8 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+-include orchestrator-svc/.env
+
 include make/common.mk
 include make/minikube.mk
 include make/helm.mk

@@ -1,3 +1,6 @@
+{{- $mcpServerUrl := .Values.orchestrator.env.mcpServerUrl -}}
+{{- $defaultMcpServerUrl := printf "http://%s-mcp-server:%v/mcp" (include "ai-chat.fullname" .) .Values.mcpServer.service.port -}}
+{{- $agentLiveCalls := .Values.orchestrator.env.agentLiveCalls | toString | lower -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,3 +44,35 @@ spec:
 
             - name: PORT
               value: {{ .Values.orchestrator.env.port | quote }}
+
+            - name: LOG_LEVEL
+              value: {{ .Values.orchestrator.env.logLevel | quote }}
+
+            - name: AGENT_LIVE_CALLS
+              value: {{ .Values.orchestrator.env.agentLiveCalls | quote }}
+
+            - name: LLM_BASE_URL
+              value: {{ .Values.orchestrator.env.llmBaseUrl | quote }}
+
+            {{- if eq $agentLiveCalls "true" }}
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-chat.fullname" . }}-orchestrator
+                  key: LLM_API_KEY
+            {{- else }}
+            - name: LLM_API_KEY
+              value: ""
+            {{- end }}
+
+            - name: LLM_MODEL
+              value: {{ .Values.orchestrator.env.llmModel | quote }}
+
+            - name: MCP_SERVER_URL
+              value: {{ ternary $defaultMcpServerUrl $mcpServerUrl (or (not $mcpServerUrl) (hasPrefix "http://localhost" $mcpServerUrl) (hasPrefix "http://127.0.0.1" $mcpServerUrl)) | quote }}
+
+            - name: DEFAULT_TENANT_ID
+              value: {{ .Values.orchestrator.env.defaultTenantId | quote }}
+
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ .Values.orchestrator.env.corsAllowedOrigins | quote }}
