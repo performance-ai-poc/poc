@@ -1,5 +1,6 @@
 POSTGRES_RESOURCE := $(RELEASE)-ai-chat-postgres
 POSTGRES_SEED_JOB := $(RELEASE)-ai-chat-mcp-seed
+POSTGRES_SEED_MANIFEST := /tmp/$(POSTGRES_SEED_JOB).yaml
 
 .PHONY: restart-postgres
 restart-postgres:
@@ -30,3 +31,13 @@ logs-postgres-seed:
 	kubectl logs \
 		-n $(NAMESPACE) \
 		job/$(POSTGRES_SEED_JOB)
+
+.PHONY: seed-postgres
+seed-postgres:
+	helm template $(RELEASE) $(CHART_DIR) \
+		--namespace $(NAMESPACE) \
+		$(HELM_IMAGE_VALUES) \
+		$(HELM_RUNTIME_VALUES) \
+		--show-only templates/mcp-seed-job.yaml \
+		> $(POSTGRES_SEED_MANIFEST)
+	kubectl apply -n $(NAMESPACE) -f $(POSTGRES_SEED_MANIFEST)

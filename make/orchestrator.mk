@@ -4,7 +4,7 @@ ORCHESTRATOR_RESOURCE := $(RELEASE)-ai-chat-orchestrator
 
 .PHONY: build-orchestrator
 build-orchestrator:
-	docker build -t $(ORCHESTRATOR_IMAGE) $(ORCHESTRATOR_DIR)
+	docker build --no-cache -t $(ORCHESTRATOR_IMAGE) $(ORCHESTRATOR_DIR)
 
 .PHONY: load-orchestrator
 load-orchestrator:

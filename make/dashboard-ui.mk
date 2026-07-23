@@ -4,7 +4,7 @@ DASHBOARD_UI_RESOURCE := $(RELEASE)-ai-chat-dashboard-ui
 
 .PHONY: build-dashboard-ui
 build-dashboard-ui:
-	docker build -t $(DASHBOARD_UI_IMAGE) $(DASHBOARD_UI_DIR)
+	docker build --no-cache -t $(DASHBOARD_UI_IMAGE) $(DASHBOARD_UI_DIR)
 
 .PHONY: load-dashboard-ui
 load-dashboard-ui:

@@ -4,7 +4,7 @@ CUSTOMER_UI_RESOURCE := $(RELEASE)-ai-chat-customer-ui
 
 .PHONY: build-customer-ui
 build-customer-ui:
-	docker build -t $(CUSTOMER_UI_IMAGE) $(CUSTOMER_UI_DIR)
+	docker build --no-cache -t $(CUSTOMER_UI_IMAGE) $(CUSTOMER_UI_DIR)
 
 .PHONY: load-customer-ui
 load-customer-ui:

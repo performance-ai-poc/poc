@@ -4,7 +4,7 @@ MCP_SERVER_RESOURCE := $(RELEASE)-ai-chat-mcp-server
 
 .PHONY: build-mcp
 build-mcp:
-	docker build -t $(MCP_SERVER_IMAGE) $(MCP_SERVER_DIR)
+	docker build --no-cache -t $(MCP_SERVER_IMAGE) $(MCP_SERVER_DIR)
 
 .PHONY: load-mcp
 load-mcp:

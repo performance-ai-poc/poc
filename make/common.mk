@@ -25,6 +25,7 @@ help:
 	@echo "  make restart-postgres"
 	@echo "  make rollout-postgres"
 	@echo "  make logs-postgres"
+	@echo "  make reset-stack"
 
 .PHONY: doctor
 doctor:
@@ -52,3 +53,21 @@ prepare-all: build-all load-all
 
 .PHONY: dev
 dev: minikube-start prepare-all deploy status
+
+.PHONY: reset-stack
+reset-stack:
+	-helm uninstall $(RELEASE) -n $(NAMESPACE) >/dev/null 2>&1 || true
+	-kubectl delete job,deploy,sts,svc,secret,pvc -n $(NAMESPACE) --all --ignore-not-found >/dev/null 2>&1 || true
+	-kubectl delete pod -n $(NAMESPACE) --all --force --grace-period=0 --ignore-not-found >/dev/null 2>&1 || true
+	-ids=$$(docker ps -aq --filter ancestor=customer-ui:$(TAG) --filter ancestor=dashboard-ui:$(TAG) --filter ancestor=orchestrator-svc:$(TAG) --filter ancestor=mcp-server:$(TAG)); \
+		if [ -n "$$ids" ]; then docker rm -f $$ids >/dev/null 2>&1 || true; fi
+	-docker rmi -f customer-ui:$(TAG) dashboard-ui:$(TAG) orchestrator-svc:$(TAG) mcp-server:$(TAG) >/dev/null 2>&1 || true
+	-docker builder prune -af >/dev/null 2>&1 || true
+	-minikube image rm customer-ui:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm dashboard-ui:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm orchestrator-svc:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm mcp-server:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm docker.io/library/customer-ui:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm docker.io/library/dashboard-ui:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm docker.io/library/orchestrator-svc:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm docker.io/library/mcp-server:$(TAG) >/dev/null 2>&1 || true

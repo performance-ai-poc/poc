@@ -37,7 +37,7 @@ from __future__ import annotations
 import time
 
 from app.context import RequestContext
-from app.llm import LLMError, plan_api_calls
+from app.llm import LLMError, plan_api_calls, summarize_api_result
 from app.logging_utils import log_agent_llm_call
 from app.mcp_client import call_tool
 from app.retry import ToolError, call_tool_with_retry
@@ -64,23 +64,6 @@ def _tool_callable(ctx: RequestContext):
         return await call_tool(tool_name, args, ctx=ctx)
 
     return _call
-
-
-def _summarize(instruction: str, calls_made: list[dict]) -> str:
-    """A short, deterministic natural-language summary for response assembly.
-
-    The instruction is echoed verbatim so the assembled reply still reflects
-    what the user actually asked (matching the rest of the pipeline); only
-    call metadata — never response bodies — is added around it.
-    """
-    if calls_made:
-        call_desc = ", ".join(
-            f"{c['method']} {c['endpoint']} -> {c['status_code']}" for c in calls_made
-        )
-        prefix = f"Retrieved shipment status via {len(calls_made)} API call(s) ({call_desc})."
-    else:
-        prefix = "No API calls were required."
-    return f"{prefix} {instruction}"
 
 
 async def api_agent_node(state):
@@ -202,7 +185,7 @@ async def api_agent_node(state):
 
     state["step_results"][step["key"]] = {
         "status": "success",
-        "summary": _summarize(instruction, calls_made),
+        "summary": await summarize_api_result(instruction, calls_made, collected),
         "duration_ms": _duration_ms(),
         "calls_made": calls_made,
         "data": {"results": collected},

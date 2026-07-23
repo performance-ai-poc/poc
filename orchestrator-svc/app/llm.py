@@ -56,6 +56,17 @@ _SYSTEM_PROMPT = (
     "prose, only the JSON object."
 )
 
+_SUMMARY_SYSTEM_PROMPT = (
+    "You are the REST API Agent's answer writer. Given the user's instruction, "
+    "the tool calls made, and the tool results, write a polished plain-English "
+    "answer. Sound helpful and conversational, like a good ChatGPT response. "
+    "Do not mention JSON unless the user asked for it. Do not mention internal "
+    "agent names. Prefer 2 to 4 short sentences. If the tool result contains a "
+    "shipment payload, mention carrier, tracking number, status, and last update "
+    "when present. Avoid awkward punctuation and do not repeat the user's prompt "
+    "verbatim unless it improves clarity."
+)
+
 
 def _estimate_tokens(text: str) -> int:
     """Rough token estimate (~4 chars/token) for offline-mode telemetry."""
@@ -109,6 +120,13 @@ async def plan_api_calls(instruction: str, api_catalog: list[dict]) -> tuple[lis
     return _plan_offline(instruction, api_catalog)
 
 
+async def summarize_api_result(instruction: str, calls_made: list[dict], results: list[dict]) -> str:
+    """Return the user-facing summary for the REST API Agent."""
+    if settings.agent_live_calls:
+        return await _summarize_live(instruction, calls_made, results)
+    return _summarize_offline(instruction, calls_made, results)
+
+
 # ---------------------------------------------------------------------------
 # Offline planner
 # ---------------------------------------------------------------------------
@@ -125,6 +143,41 @@ def _plan_offline(instruction: str, api_catalog: list[dict]) -> tuple[list[dict]
         "latency_ms": 0,
     }
     return plan, meta
+
+
+def _summarize_offline(instruction: str, calls_made: list[dict], results: list[dict]) -> str:
+    if not results:
+        if calls_made:
+            call_desc = ", ".join(
+                f"{c['method']} {c['endpoint']} -> {c['status_code']}" for c in calls_made
+            )
+            return f"I checked the shipping API ({call_desc}), but I did not find a matching shipment. {instruction}"
+        return f"I did not need to call the shipping API. {instruction}"
+
+    payload = results[0]
+    if not isinstance(payload, dict):
+        return f"I got a result from the shipping API, but I could not format it cleanly. {instruction}"
+
+    order_id = payload.get("order_id")
+    carrier = payload.get("carrier")
+    tracking_number = payload.get("tracking_number")
+    status = payload.get("status")
+    last_update = payload.get("last_update")
+
+    lead = f"Here is the shipment status for order {order_id}" if order_id is not None else "Here is the shipment status"
+    detail_bits: list[str] = []
+    if carrier:
+        detail_bits.append(f"it is handled by {carrier}")
+    if tracking_number:
+        detail_bits.append(f"tracking number {tracking_number}")
+    if status:
+        detail_bits.append(f"current status is {status}")
+    if last_update:
+        detail_bits.append(f"last updated {last_update}")
+
+    if detail_bits:
+        return f"{lead}. " + ". ".join(detail_bits[:2]) + (f". {detail_bits[2]}." if len(detail_bits) > 2 else ".")
+    return f"{lead}."
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +244,56 @@ async def _plan_live(instruction: str, api_catalog: list[dict]) -> tuple[list[di
         "latency_ms": latency_ms,
     }
     return plan, meta
+
+
+async def _summarize_live(instruction: str, calls_made: list[dict], results: list[dict]) -> str:
+    import httpx
+
+    request_body = {
+        "model": settings.llm_model,
+        "messages": [
+            {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "instruction": instruction,
+                        "calls_made": calls_made,
+                        "results": results,
+                    },
+                    default=str,
+                ),
+            },
+        ],
+        "temperature": 0,
+    }
+    headers = {"Content-Type": "application/json"}
+    if settings.llm_api_key:
+        headers["Authorization"] = f"Bearer {settings.llm_api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.llm_timeout_s) as http:
+            response = await http.post(
+                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+                json=request_body,
+                headers=headers,
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        raise LLMError(f"llm_http_{exc.response.status_code}") from exc
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.RequestError):
+        raise LLMError("llm_unreachable") from None
+
+    try:
+        content = payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMError("llm_bad_response") from exc
+
+    content = str(content).strip()
+    if not content:
+        raise LLMError("llm_bad_response")
+    return content
 
 
 def _extract_calls(content: str) -> Any:
