@@ -7,11 +7,15 @@ stdout from the first tool call.
 """
 
 from mcp.server.fastmcp import FastMCP
+from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
 
 from app.logging_utils import configure_logging
+from app.telemetry import configure_telemetry
 from app.tools import register
 
 configure_logging()
+configure_telemetry("mcp-server")
+PsycopgInstrumentor().instrument()
 
 mcp = FastMCP(
     "baseline-mcp-server",

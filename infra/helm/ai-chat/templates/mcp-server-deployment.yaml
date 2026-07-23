@@ -48,3 +48,13 @@ spec:
               value: {{ .Values.mcpServer.env.mockToolLatencyMs | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.mcpServer.env.logLevel | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.mcpServer.env.otelServiceName | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.mcpServer.env.otelExporterOtlpEndpoint | default (printf "http://%s-otel-collector:4317" (include "ai-chat.fullname" .)) | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"

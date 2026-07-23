@@ -9,6 +9,8 @@ and testable before the real DB Agent lands.
 
 from __future__ import annotations
 
+from app.telemetry import trace_agent_step
+
 # TEST-ONLY, not demo/production behavior: with no real DB Agent or MCP
 # server to inject a genuine failure into yet, this trigger phrase lets
 # tests deliberately force this stub to fail so the orchestrator's
@@ -20,6 +22,7 @@ from __future__ import annotations
 FORCE_FAILURE_TRIGGER = "__FORCE_DB_AGENT_FAILURE__"
 
 
+@trace_agent_step
 def db_agent_node(state):
     step = state["steps"][state["current_step"]]
 

@@ -50,6 +50,8 @@ orchestrator:
     mcpServerUrl: ""
     defaultTenantId: default-tenant
     corsAllowedOrigins: "*"
+    otelExporterOtlpEndpoint: ""
+    otelServiceName: orchestrator-svc
 
 mcpServer:
   replicaCount: 1
@@ -67,6 +69,18 @@ mcpServer:
     statementTimeoutMs: "3000"
     mockToolLatencyMs: "0"
     logLevel: INFO
+    otelExporterOtlpEndpoint: ""
+    otelServiceName: mcp-server
+
+otelCollector:
+  replicaCount: 1
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.153.0"
+    pullPolicy: IfNotPresent
+  service:
+    grpcPort: 4317
+    httpPort: 4318
 
 postgresql:
   enabled: true

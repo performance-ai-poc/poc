@@ -24,10 +24,14 @@ from app.logging_utils import configure_logging, log_event
 from app.middleware import RequestContextMiddleware
 from app.schemas import ChatRequest, ChatResponse, ErrorResponse
 from app.service import generate_reply
+from app.telemetry import configure_telemetry, instrument_fastapi, instrument_httpx
 
 configure_logging(settings.log_level)
+configure_telemetry("orchestrator-svc")
 
 app = FastAPI(title="Performance AI Backend", version="0.1.0")
+instrument_fastapi(app)
+instrument_httpx()
 
 # Dev-friendly default: allow all origins/methods/headers so the frontend
 # (unknown origin/port for now) is never blocked by CORS. Restrict later via

@@ -3,9 +3,10 @@
 Every log line is a single JSON object written to stdout. This module never
 makes network calls — it is purely local (stdout), in keeping with the
 service's fail-open discipline: request handling must never block on an
-external logging/telemetry backend. A future OTel layer can tail/parse this
-stdout stream (or replace the handler) without changing call sites, because
-every call site already passes a ``RequestContext`` explicitly.
+external logging/telemetry backend. The OTel bootstrap adds a separate
+LoggingHandler to this logger when OTLP logs are enabled, without changing
+call sites, because every call site already passes a ``RequestContext``
+explicitly.
 
 Metadata-only by default: log lines carry the four identifiers, the endpoint,
 a timestamp, and response status/event name. They deliberately never include

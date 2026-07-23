@@ -2,8 +2,8 @@
 
 This repo is a multi-service proof of concept for an agentic AI chat system
 with an observability-first architecture. It currently contains a FastAPI
-orchestrator skeleton, a baseline MCP server, two React/Vite UI shells, and a
-Helm chart for running the stack in Minikube.
+orchestrator, a baseline MCP server, two React/Vite UI shells, a vendor-neutral
+OTLP Collector path, and a Helm chart for running the stack in Minikube.
 
 The implementation is intentionally early-stage: the orchestrator has a stable
 `/chat` contract and structured request logging, but still returns a placeholder
@@ -51,7 +51,7 @@ Every non-generated folder has its own README with local notes:
 - [`make/`](make/README.md) - included Makefile target groups.
 - [`mcp-server/`](mcp-server/README.md) - baseline FastMCP service.
 - [`orchestrator-svc/`](orchestrator-svc/README.md) - FastAPI API contract and logging details.
-- [`otel/`](otel/README.md) - reserved for telemetry instrumentation and collector config.
+- [`otel/`](otel/README.md) - OTLP Collector configuration and telemetry notes.
 
 Generated/vendor folders such as `node_modules/`, `dist/`, `.git/`, and build
 output are intentionally not documented.
@@ -172,7 +172,7 @@ make helm-template
 ## Current Limitations
 
 - The orchestrator returns `Received: <message>` instead of calling real agents.
-- `agent1-svc/`, `agent2-svc/`, and `otel/` are placeholders.
+- `agent1-svc/` and `agent2-svc/` are placeholders.
 - The MCP server only exposes a demo `add(a, b)` tool.
 - The UIs are still Vite scaffolds and do not call the orchestrator yet.
-- The OTel collector/export path is not wired in yet.
+- The Collector currently uses the `debug` exporter; configure a backend exporter in the Collector when one is selected.

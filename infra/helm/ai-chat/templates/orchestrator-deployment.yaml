@@ -48,6 +48,21 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.orchestrator.env.logLevel | quote }}
 
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.orchestrator.env.otelServiceName | quote }}
+
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.orchestrator.env.otelExporterOtlpEndpoint | default (printf "http://%s-otel-collector:4317" (include "ai-chat.fullname" .)) | quote }}
+
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+
             - name: AGENT_LIVE_CALLS
               value: {{ .Values.orchestrator.env.agentLiveCalls | quote }}
 

@@ -1,4 +1,4 @@
-# Local stack for the MCP server: Postgres 16 + the FastMCP server.
+# Local stack for the MCP server: Postgres 16 + FastMCP + OTLP Collector.
 #
 #   docker compose up --build
 #
@@ -40,10 +40,24 @@ services:
       STATEMENT_TIMEOUT_MS: "3000"
       MOCK_TOOL_LATENCY_MS: "0"
       LOG_LEVEL: "INFO"
+      OTEL_SERVICE_NAME: mcp-server
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
     # Seed (idempotent) then serve over streamable-http.
     command: ["sh", "-c", "python -m app.seed.build_seed && python -m app.server"]
     ports:
       - "8000:8000"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    command: ["--config=/etc/otelcol-contrib/collector-config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol-contrib/collector-config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
 
 volumes:
   mcp_pgdata:
