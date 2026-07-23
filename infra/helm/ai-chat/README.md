@@ -24,6 +24,15 @@ make deploy
 make uninstall
 ```
 
+For Postgres operations in Minikube:
+
+```bash
+make restart-postgres
+make rollout-postgres
+make logs-postgres
+make logs-postgres-seed
+```
+
 ## PostgreSQL and MCP
 
 The Kubernetes deployment mirrors the database contract in the repository's
@@ -91,3 +100,11 @@ kubectl rollout status statefulset/demo-ai-chat-postgres -n ai-chat
 
 The replacement pod mounts the same claim, so the seeded tables and data remain.
 The chart intentionally does not re-run the destructive demo seed on upgrades.
+
+If you change Postgres auth values or need to force the live pod to pick up a
+new Secret, run:
+
+```bash
+make restart-postgres
+make rollout-postgres
+```

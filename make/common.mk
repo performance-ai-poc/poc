@@ -22,6 +22,9 @@ help:
 	@echo "  make rebuild-dashboard-ui"
 	@echo "  make rebuild-orchestrator"
 	@echo "  make rebuild-mcp"
+	@echo "  make restart-postgres"
+	@echo "  make rollout-postgres"
+	@echo "  make logs-postgres"
 
 .PHONY: doctor
 doctor:
