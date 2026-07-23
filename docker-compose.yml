@@ -61,15 +61,21 @@ services:
       - "5080:5080"
     volumes:
       - openobserve_data:/data
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5080/healthz"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+    # No healthcheck: the OpenObserve image is distroless (no shell/wget/curl),
+    # so a command-based compose healthcheck can't run. The Collector below
+    # depends only on this container having STARTED, not on readiness — its
+    # export queue + retry absorb a not-yet-ready backend (fail-open, C2).
+    # (The Kubernetes path uses httpGet probes on /healthz, which need no
+    # in-container tool, so it is unaffected.)
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
     command: ["--config=/etc/otelcol-contrib/collector-config.yaml"]
+    # Compose-only: the named volume for the persistent queue (/var/lib/otelcol)
+    # is created root-owned, and the image's default non-root user can't write
+    # it. The Kubernetes path handles this properly with fsGroup on an emptyDir,
+    # so this override is not needed there.
+    user: "0:0"
     volumes:
       - ./otel/collector-config.yaml:/etc/otelcol-contrib/collector-config.yaml:ro
       # Bounded, writable — file offsets + persistent export queue only (C5).
@@ -85,7 +91,7 @@ services:
       - "4318:4318"
     depends_on:
       openobserve:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   mcp_pgdata:

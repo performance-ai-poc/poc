@@ -410,10 +410,15 @@ service:
   telemetry:
     logs:
       level: info
-    # Exposes the Prometheus endpoint the `prometheus` receiver above
-    # scrapes from itself. Loopback-only in intent (0.0.0.0 because the
-    # scrape target is configured as 0.0.0.0:8888 above, within the same
-    # container/pod — never exposed as a published port in
-    # otel/docker-compose.otel.yml or the DaemonSet's hostPort list).
+    # Exposes the Collector's own internal metrics as Prometheus on :8888, which
+    # the `prometheus` receiver above scrapes for self-monitoring (A13). Uses the
+    # `readers` schema — Collector Contrib 0.123+ removed the older
+    # `metrics.address` field (docs/CONSTRAINTS.md C9: pinned-version component
+    # migration). Within the container/pod only; never a published/host port.
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
