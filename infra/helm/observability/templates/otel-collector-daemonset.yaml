@@ -4,7 +4,7 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-otel-collector
+  name: {{ include "observability.fullname" . }}-otel-collector
   labels:
     app.kubernetes.io/name: otel-collector
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -23,7 +23,7 @@ spec:
         # hot-reload).
         checksum/config: {{ include (print $.Template.BasePath "/otel-collector-configmap.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: {{ include "ai-chat.fullname" . }}-otel-collector
+      serviceAccountName: {{ include "observability.fullname" . }}-otel-collector
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -51,7 +51,7 @@ spec:
             - name: OPENOBSERVE_AUTH_HEADER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-chat.fullname" . }}-otel-collector
+                  name: {{ include "observability.fullname" . }}-otel-collector
                   key: OPENOBSERVE_AUTH_HEADER
           ports:
             # hostPort so each pod reaches the Collector on its own node.
@@ -113,7 +113,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "ai-chat.fullname" . }}-otel-collector
+            name: {{ include "observability.fullname" . }}-otel-collector
         - name: varlogpods
           hostPath:
             path: /var/log/pods

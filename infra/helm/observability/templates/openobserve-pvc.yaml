@@ -1,10 +1,14 @@
-{{- if and .Values.openObserve.enabled .Values.openObserve.persistence.size }}
+{{- if and .Values.openObserve.enabled .Values.openObserve.persistence.size (not .Values.openObserve.persistence.existingClaim) }}
 # Persistent storage for OpenObserve's telemetry data. Same PVC pattern the
 # postgres StatefulSet already uses successfully in this chart.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-openobserve
+  name: {{ include "observability.fullname" . }}-openobserve
+  {{- if .Values.openObserve.persistence.keepOnDelete }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
   labels:
     app.kubernetes.io/name: openobserve
     app.kubernetes.io/instance: {{ .Release.Name }}

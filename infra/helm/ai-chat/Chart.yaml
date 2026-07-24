@@ -1,6 +1,6 @@
 apiVersion: v2
 name: ai-chat
-description: Demo Helm chart for the customer UI
+description: Application services for the Performance AI POC
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

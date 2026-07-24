@@ -3,8 +3,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CHART_DIR="${REPO_ROOT}/infra/helm/ai-chat"
-RELEASE="${RELEASE:-demo}"
+CHART_DIR="${REPO_ROOT}/infra/helm/observability"
+RELEASE="${OBSERVABILITY_RELEASE:-observability}"
 NAMESPACE="${NAMESPACE:-default}"
 RENDERED_FILE="$(mktemp)"
 CHECK_SCRIPT="$(mktemp --suffix=.py)"

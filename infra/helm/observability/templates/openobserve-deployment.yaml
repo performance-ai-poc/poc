@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-openobserve
+  name: {{ include "observability.fullname" . }}-openobserve
   labels:
     app.kubernetes.io/name: openobserve
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -31,12 +31,12 @@ spec:
             - name: ZO_ROOT_USER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-chat.fullname" . }}-openobserve
+                  name: {{ include "observability.fullname" . }}-openobserve
                   key: ZO_ROOT_USER_EMAIL
             - name: ZO_ROOT_USER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-chat.fullname" . }}-openobserve
+                  name: {{ include "observability.fullname" . }}-openobserve
                   key: ZO_ROOT_USER_PASSWORD
             - name: ZO_DATA_DIR
               value: /data
@@ -67,9 +67,9 @@ spec:
               mountPath: /data
       volumes:
         - name: data
-          {{- if .Values.openObserve.persistence.size }}
+          {{- if or .Values.openObserve.persistence.size .Values.openObserve.persistence.existingClaim }}
           persistentVolumeClaim:
-            claimName: {{ include "ai-chat.fullname" . }}-openobserve
+            claimName: {{ .Values.openObserve.persistence.existingClaim | default (printf "%s-openobserve" (include "observability.fullname" .)) }}
           {{- else }}
           emptyDir: {}
           {{- end }}

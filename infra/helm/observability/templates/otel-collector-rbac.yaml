@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-otel-collector
+  name: {{ include "observability.fullname" . }}-otel-collector
   labels:
     app.kubernetes.io/name: otel-collector
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -14,7 +14,7 @@ automountServiceAccountToken: true
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-otel-collector
+  name: {{ include "observability.fullname" . }}-otel-collector
   labels:
     app.kubernetes.io/name: otel-collector
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -34,16 +34,16 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-otel-collector
+  name: {{ include "observability.fullname" . }}-otel-collector
   labels:
     app.kubernetes.io/name: otel-collector
     app.kubernetes.io/instance: {{ .Release.Name }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "ai-chat.fullname" . }}-otel-collector
+  name: {{ include "observability.fullname" . }}-otel-collector
 subjects:
   - kind: ServiceAccount
-    name: {{ include "ai-chat.fullname" . }}-otel-collector
+    name: {{ include "observability.fullname" . }}-otel-collector
     namespace: {{ .Release.Namespace }}
 {{- end }}

@@ -3,8 +3,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CHART_DIR="${REPO_ROOT}/infra/helm/ai-chat"
-RELEASE="${RELEASE:-demo}"
+CHART_DIR="${REPO_ROOT}/infra/helm/observability"
+RELEASE="${OBSERVABILITY_RELEASE:-observability}"
 NAMESPACE="${NAMESPACE:-default}"
 RENDERED_FILE="$(mktemp)"
 trap 'rm -f "${RENDERED_FILE}"' EXIT
@@ -114,7 +114,7 @@ fi
 
 if kubectl cluster-info >/dev/null 2>&1; then
   echo "==> Live cluster detected — checking with kubectl auth can-i"
-  SA="system:serviceaccount:${NAMESPACE}:${RELEASE}-ai-chat-otel-collector"
+  SA="system:serviceaccount:${NAMESPACE}:${RELEASE}-otel-collector"
   for verb_resource in "create pods" "delete pods" "patch pods" "get secrets" "list secrets" "create clusterroles"; do
     verb=$(echo "${verb_resource}" | cut -d' ' -f1)
     resource=$(echo "${verb_resource}" | cut -d' ' -f2)

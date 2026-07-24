@@ -17,7 +17,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STANDALONE = REPO_ROOT / "otel" / "collector-config.yaml"
-CHART_DIR = REPO_ROOT / "infra" / "helm" / "ai-chat"
+CHART_DIR = REPO_ROOT / "infra" / "helm" / "observability"
 COMPOSE = REPO_ROOT / "otel" / "docker-compose.otel.yml"
 POLICY_DIR = REPO_ROOT / "otel" / "policy"
 

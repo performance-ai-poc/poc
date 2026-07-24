@@ -70,18 +70,25 @@ mcp-server ───────┘                    memory_limiter → resour
 | `tests/` | Acceptance scripts + offline Python suites (see below) |
 | `local-logs/` | Local stand-in for the k8s container-log path (filelog source) |
 
-The Kubernetes side is in
-[`infra/helm/ai-chat/templates/`](../infra/helm/ai-chat/templates/):
+The Kubernetes side is an independent chart in
+[`infra/helm/observability/`](../infra/helm/observability/):
 `otel-collector-{daemonset,configmap,rbac,secret}.yaml` and
 `openobserve-{deployment,service,secret,pvc}.yaml`.
 
 ## Running it
 
-**Full stack on Kubernetes (the complete, doc-compliant path):**
+**Full stack on Kubernetes (two independent Helm releases):**
 ```bash
-make dev            # builds images, deploys the chart incl. Collector + OpenObserve
+make dev
 ```
 OpenObserve is exposed on NodePort `30083`.
+
+Deploy either ownership boundary independently:
+
+```bash
+make deploy-observability
+make deploy-app
+```
 
 **Local data-plane + telemetry via Compose:**
 ```bash

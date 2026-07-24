@@ -18,7 +18,8 @@ At a high level:
 - `dashboard-ui/` is the future operator/observability dashboard.
 - `orchestrator-svc/` exposes `GET /health` and `POST /chat`.
 - `mcp-server/` exposes a small FastMCP server with one demo `add` tool.
-- `infra/helm/ai-chat/` deploys the services to Kubernetes.
+- `infra/helm/ai-chat/` deploys the application services to Kubernetes.
+- `infra/helm/observability/` independently deploys the Collector and OpenObserve.
 - `make/` contains the Docker, Minikube, Helm, and port-forward targets.
 - `docs/` holds architecture artifacts, including the current infrastructure diagram.
 
