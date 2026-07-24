@@ -1,17 +1,16 @@
 # OTel — Observability plane
 
-End-to-end OpenTelemetry for the AI chat POC. This is the combined result of two
-workstreams:
+End-to-end OpenTelemetry for the AI chat POC. Two parts:
 
-1. **Application instrumentation** — a vendor-neutral OTel SDK inside
+1. Application instrumentation — a vendor-neutral OTel SDK inside
    `orchestrator-svc/` and `mcp-server/` producing real spans, metrics, and logs
    (HTTP, agent, LLM, tool, and DB), with W3C trace context propagated across the
    MCP boundary. Gated by `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SDK_DISABLED` — no
    endpoint means no export, and the app is unaffected either way.
-2. **The collection plane (this folder + the Helm templates)** — a hardened OTel
-   Collector that receives that OTLP, redacts sensitive data, enforces a
-   customer capture policy, and exports to OpenObserve. Also tails stdout via
-   `filelog` as a correlation backstop, and scrapes host/pod/self metrics.
+2. The collection plane (this folder + the Helm templates) — an OTel Collector
+   that receives that OTLP, redacts sensitive data, enforces a capture policy,
+   and exports to OpenObserve. Also tails stdout via `filelog` as a correlation
+   backstop, and scrapes host/pod/self metrics.
 
 The two are independent: stop the Collector and the app keeps serving requests
 and logging to stdout (fail-open, `docs/CONSTRAINTS.md` C2).

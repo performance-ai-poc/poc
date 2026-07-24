@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A10 + A12 (docs/ACCEPTANCE.md): stopping the Collector, and
-# separately stopping the telemetry backend, must never fail a request —
-# only ever a telemetry gap (C2, docs/CONSTRAINTS.md). This is demo
-# scenario 4 (docs/ACCEPTANCE.md's own note: "the one that wins the room").
-#
-# Requires: otel/docker-compose.otel.yml already running,
-# orchestrator-svc/.venv already set up.
-#
-# Usage: ./otel/tests/test_failopen.sh
 
 set -uo pipefail
 

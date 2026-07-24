@@ -24,7 +24,6 @@ customerUi:
       enabled: false
       secretName: ""
 
-
 orchestrator:
   replicaCount: 1
 
@@ -81,8 +80,6 @@ otelCollector:
   enabled: true
 
   image:
-    # Pinned, never :latest (docs/CONSTRAINTS.md C9). Aligned with the tag the
-    # app instrumentation was developed against.
     repository: otel/opentelemetry-collector-contrib
     tag: "0.153.0"
     pullPolicy: IfNotPresent
@@ -93,7 +90,6 @@ otelCollector:
 
   deploymentEnvironment: kubernetes
 
-  # docs/CONSTRAINTS.md C6 targets. The only workload in this chart with limits.
   resources:
     requests:
       cpu: 150m
@@ -114,10 +110,6 @@ otelCollector:
     # backend with its own credentials.
     authHeader: ""
 
-# OpenObserve — the unified telemetry backend (traces + metrics + logs + a
-# built-in dashboard), so the stack is self-contained and demonstrable without
-# any external service (v2 design section 14). Local-only demo credentials,
-# same posture the rest of this chart takes for Postgres.
 openObserve:
   enabled: true
 

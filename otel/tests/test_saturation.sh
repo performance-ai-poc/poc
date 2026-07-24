@@ -1,21 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A11 + A13 (docs/ACCEPTANCE.md): under a telemetry flood, the
-# Collector drops records and stays inside its configured CPU/memory
-# ceilings; application latency/availability is unaffected; dropped-record
-# and queue-saturation metrics are themselves queryable afterward.
-#
-# This script checks the CEILINGS ARE RESPECTED (container stays up, stays
-# under its configured memory limit) and that SOME drop/refusal signal is
-# queryable. It does not attempt a rigorous p95-latency measurement —
-# docs/CONSTRAINTS.md's C6 quantitative targets ("app p95 latency change <=2%
-# under controlled load") need real load-testing tooling (k6, locust, etc.),
-# which is out of scope for a bash script; this does a looser before/after
-# average-latency sanity check instead and says so in its own output.
-#
-# Requires: otel/docker-compose.otel.yml already running,
-# orchestrator-svc/.venv already set up.
-#
-# Usage: ./otel/tests/test_saturation.sh [flood_count]
 
 set -uo pipefail
 
@@ -100,7 +83,7 @@ echo "==> /chat latency during/immediately after the flood"
 flood_ms=$(avg_latency_ms)
 echo "    during/after flood: ${flood_ms}ms (baseline was ${baseline_ms}ms)"
 echo "    NOTE: this is a loose sanity check, not the rigorous p95 measurement"
-echo "    docs/CONSTRAINTS.md C6 specifies — see this script's header comment."
+echo "    a rigorous p95 measurement would need a real load tool."
 
 echo "==> Checking otel-collector container memory stays within its ${MEMORY_LIMIT_MIB}MiB limit"
 mem_usage=$(docker stats --no-stream --format '{{.MemUsage}}' \
@@ -113,7 +96,7 @@ if [ -z "${container_running}" ]; then
 fi
 echo "    OK: otel-collector container is still running after the flood."
 
-echo "==> Checking for a queryable drop/refusal signal (Acceptance A13)"
+echo "==> Checking for a queryable drop/refusal signal"
 sleep 20  # let the prometheus self-scrape (15s interval) and export catch up
 metrics_response=$(curl -s -X POST \
   "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=metrics" \

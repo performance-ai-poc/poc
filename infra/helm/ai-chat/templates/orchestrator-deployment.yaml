@@ -51,11 +51,8 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: {{ .Values.orchestrator.env.otelServiceName | quote }}
 
-            # The Collector is a DaemonSet exposed on each node's hostPort, so
-            # a pod sends to the Collector on ITS OWN node via the node IP
-            # (docs/CONSTRAINTS.md C8 per-node design) — not a load-balanced
-            # Service. Async BatchSpanProcessor + no endpoint = fail-open: if the
-            # node Collector is down, spans drop, the app is unaffected.
+            # Send to the Collector on this pod's own node (DaemonSet hostPort).
+            # Export is async, so a down Collector never affects the app.
             - name: HOST_IP
               valueFrom:
                 fieldRef:

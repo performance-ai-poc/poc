@@ -1,11 +1,7 @@
 {{- if .Values.otelCollector.enabled }}
-# The first RBAC-bearing workload in this chart (docs/OTEL_PLAN.md: "the
-# chart has no RBAC at all" before this). Grants exactly get/list/watch on
-# pods, namespaces, and nodes (for the k8sattributes processor) plus get on
-# nodes/stats (for the kubeletstats receiver) — nothing else. No create,
-# update, patch, delete, or exec verb anywhere below, and no Secrets access
-# (docs/CONSTRAINTS.md C5). The absence of any write verb makes C10 ("no
-# automated remediation") structurally enforced here, not merely promised.
+# Read-only access for the Collector: get/list/watch on pods, namespaces, and
+# nodes (k8sattributes) plus get on nodes/stats (kubeletstats). No write verbs,
+# no Secrets access.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

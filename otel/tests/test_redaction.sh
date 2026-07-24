@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A8 (docs/ACCEPTANCE.md): seed exact sensitive values into a
-# hand-crafted span and assert none reach the backend. Defense in depth — the
-# application-side emitters already guarantee E2-E6 (docs/ACCEPTANCE.md);
-# this proves the Collector's own privacy processor independently, so a
-# future application bug is not the only thing standing between a secret and
-# the backend.
-#
-# The fourth seeded value (an attribute name mentioned nowhere in
-# collector-config.yaml) is what actually distinguishes an allowlist (C4)
-# from a denylist: nothing had to know its name in advance for it to be
-# dropped.
-#
-# Usage:
-#   docker compose -f otel/docker-compose.otel.yml up -d
-#   ./otel/tests/test_redaction.sh
 
 set -uo pipefail
 

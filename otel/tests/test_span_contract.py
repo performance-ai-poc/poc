@@ -1,15 +1,9 @@
-"""Span-attribute contract: the REAL spans the app SDK emits vs. the Collector's
-trace allowlist + redaction.
+"""Captures the real spans a /chat request produces (in-memory, no Collector)
+and checks every attribute is allowlisted, a normalized correlation source, or
+an intentionally-deleted sensitive key — so nothing the app emits is silently
+dropped and no sensitive key survives.
 
-The trace-side counterpart of test_log_contract.py. It captures the actual
-spans a /chat request produces (via an in-memory exporter, no Collector) and
-checks every span attribute is either in the Collector's trace keep_keys
-allowlist, a normalized correlation source (app.<id> -> bare), or an
-intentionally-deleted sensitive key. A custom attribute the app sets that is in
-none of those would be silently dropped by the fail-closed allowlist — telemetry
-lost with no error. This fails loudly here instead.
-
-Run with orchestrator-svc's venv, from orchestrator-svc/:
+Run from orchestrator-svc/:
     ./.venv/Scripts/python.exe -m pytest ../otel/tests/test_span_contract.py -v
 """
 
@@ -40,7 +34,6 @@ client = TestClient(app)
 _exporter = InMemorySpanExporter()
 _provider = trace.get_tracer_provider()
 
-
 def _trace_allowlist() -> set[str]:
     """Attributes kept on spans: the keep_keys list inside trace_statements."""
     cfg = yaml.safe_load(STANDALONE.read_text())
@@ -53,12 +46,10 @@ def _trace_allowlist() -> set[str]:
             keys.update(re.findall(r'"([^"]+)"', m.group(1)))
     return keys
 
-
 def _deleted_keys() -> set[str]:
     cfg = yaml.safe_load(STANDALONE.read_text())
     return {a["key"] for a in cfg["processors"]["attributes/privacy"]["actions"]
             if a.get("action") == "delete"}
-
 
 @pytest.fixture(scope="module", autouse=True)
 def _capture_spans():
@@ -66,7 +57,6 @@ def _capture_spans():
         pytest.skip("active TracerProvider is a no-op (import order); run this module alone")
     _provider.add_span_processor(SimpleSpanProcessor(_exporter))
     yield
-
 
 def _emitted_span_attributes(message: str) -> set[str]:
     _exporter.clear()
@@ -77,14 +67,11 @@ def _emitted_span_attributes(message: str) -> set[str]:
         attrs.update(span.attributes.keys())
     return attrs
 
-
 WIDE = "Check my orders and the shipment status with the carrier, and the escalation policy."
-
 
 def test_app_actually_emits_spans():
     attrs = _emitted_span_attributes(WIDE)
     assert attrs, "no span attributes captured — the SDK produced no spans"
-
 
 def test_no_span_attribute_is_silently_dropped_by_the_allowlist():
     allow = _trace_allowlist()
@@ -97,7 +84,6 @@ def test_no_span_attribute_is_silently_dropped_by_the_allowlist():
         f"k8s ConfigMap, or confirm they are intentionally dropped."
     )
 
-
 def test_core_gen_ai_semconv_attributes_are_present_and_allowlisted():
     """The attributes the dashboard actually needs must both be emitted by the
     app and survive the allowlist."""
@@ -109,7 +95,6 @@ def test_core_gen_ai_semconv_attributes_are_present_and_allowlisted():
         assert attr in emitted, f"app SDK did not emit {attr} on any span"
         assert attr in allow, f"{attr} emitted but not allowlisted — would be dropped"
 
-
 def test_correlation_ids_are_normalized_onto_spans_and_kept():
     """The app sets app.run_id etc.; the Collector normalizes to bare run_id and
     keeps those. Confirm the app really emits the app.<id> source form."""
@@ -118,10 +103,8 @@ def test_correlation_ids_are_normalized_onto_spans_and_kept():
     for bare in ("run_id", "request_id", "session_id", "tenant_id"):
         assert bare in _trace_allowlist(), f"{bare} not in trace allowlist"
 
-
 def test_raw_sql_key_is_in_the_delete_list_not_the_allowlist():
-    """db.statement / db.query.text (raw SQL from psycopg auto-instrumentation)
-    must be deleted, never allowlisted — the redaction the combined design adds."""
+    """Raw SQL keys must be deleted, never allowlisted."""
     deleted = _deleted_keys()
     allow = _trace_allowlist()
     for sql_key in ("db.statement", "db.query.text"):

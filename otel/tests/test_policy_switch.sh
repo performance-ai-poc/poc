@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A9 (docs/ACCEPTANCE.md): changing capture.mode from
-# metadata-only to content-approved visibly changes what reaches the
-# backend, with no application restart.
-#
-# Uses hand-crafted spans carrying gen_ai.input.messages /
-# gen_ai.output.messages directly (docs/SEMCONV.md section 7: nothing in the
-# application emits these today, so this does not wait on that handoff to
-# prove the gate itself works — see otel/policy/README.md).
-#
-# Requires: otel/docker-compose.otel.yml already running.
-# Leaves the stack in metadata-only (the default) when it exits, pass or fail.
-#
-# Usage: ./otel/tests/test_policy_switch.sh
 
 set -uo pipefail
 

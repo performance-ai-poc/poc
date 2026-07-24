@@ -1,15 +1,3 @@
-# Local stack: Postgres 16 + FastMCP + the hardened OTel Collector + OpenObserve.
-#
-#   docker compose up --build
-#
-# mcp-server seeds the DB deterministically then serves 7 tools over
-# streamable-http on :8000, exporting OTLP telemetry to the Collector. The
-# Collector runs the SAME hardened config as Kubernetes (otel/collector-config.yaml:
-# redaction, capture policy, allowlist) and exports to OpenObserve, browsable at
-# http://localhost:5080. Stopping the Collector or OpenObserve never affects the
-# app (fail-open, C2). For the full app path incl. the orchestrator + UIs, use
-# the Helm chart (make dev); this compose is the data-plane + telemetry subset.
-
 services:
   postgres:
     image: postgres:16
@@ -61,12 +49,6 @@ services:
       - "5080:5080"
     volumes:
       - openobserve_data:/data
-    # No healthcheck: the OpenObserve image is distroless (no shell/wget/curl),
-    # so a command-based compose healthcheck can't run. The Collector below
-    # depends only on this container having STARTED, not on readiness — its
-    # export queue + retry absorb a not-yet-ready backend (fail-open, C2).
-    # (The Kubernetes path uses httpGet probes on /healthz, which need no
-    # in-container tool, so it is unaffected.)
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
@@ -78,7 +60,6 @@ services:
     user: "0:0"
     volumes:
       - ./otel/collector-config.yaml:/etc/otelcol-contrib/collector-config.yaml:ro
-      # Bounded, writable — file offsets + persistent export queue only (C5).
       - otelcol_storage:/var/lib/otelcol
     environment:
       DEPLOYMENT_ENVIRONMENT: local-compose

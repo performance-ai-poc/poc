@@ -1,20 +1,9 @@
-"""Contract test: what orchestrator-svc ACTUALLY logs vs. what the Collector
-config expects to read.
+"""Contract test for what orchestrator-svc logs vs. what the filelog receiver
+and the allowlist in otel/collector-config.yaml expect. Drives the real app
+and checks its output, so a new unallowlisted field or a changed timestamp
+format fails here rather than silently producing empty telemetry live.
 
-This is the test that most directly answers "does our telemetry layer integrate
-smoothly with the rest of the code" without a running Collector. It drives the
-REAL application (its own logging, its own graph, unmodified) and checks the
-byte-level output against the filelog receiver + transform/limits allowlist in
-otel/collector-config.yaml. If the app starts emitting a field we forgot to
-allowlist, or changes its timestamp format, this fails here instead of silently
-producing empty telemetry in a live run (docs/CONSTRAINTS.md's "fails silently"
-warning).
-
-It imports application code READ-ONLY (never modifies it) and must be run with
-orchestrator-svc's venv, from orchestrator-svc/ (pytest.ini puts app on the
-path):
-
-    cd orchestrator-svc
+Run from orchestrator-svc/:
     ./.venv/Scripts/python.exe -m pytest ../otel/tests/test_log_contract.py -v
 """
 
@@ -42,10 +31,6 @@ STANDALONE = REPO_ROOT / "otel" / "collector-config.yaml"
 # the keep_keys allowlist as an ordinary attribute.
 ENVELOPE_FIELDS = {"timestamp", "service.name", "event"}
 
-# Raw fields transform/limits RENAMES to a gen_ai.*/http.* name (SEMCONV.md §3)
-# before keep_keys runs. The renamed target is in the allowlist; the raw source
-# is intentionally dropped afterward. So a raw source appearing "dropped" is
-# correct, not a lost field — it left under its new name.
 RENAME_SOURCE_FIELDS = {
     "agent",          # -> gen_ai.agent.name
     "error_type",     # -> error.type
@@ -58,7 +43,6 @@ RENAME_SOURCE_FIELDS = {
 
 client = TestClient(app)
 
-
 def _allowlist() -> set[str]:
     blob = STANDALONE.read_text()
     keys: set[str] = set()
@@ -66,14 +50,12 @@ def _allowlist() -> set[str]:
         keys.update(re.findall(r'"([^"]+)"', match.group(1)))
     return keys
 
-
 def _timestamp_layout() -> str:
     """The strptime layout the filelog json_parser is configured with."""
     blob = STANDALONE.read_text()
     m = re.search(r"layout:\s*'([^']+)'", blob)
     assert m, "could not find a timestamp layout in the filelog receiver config"
     return m.group(1)
-
 
 def _all_emitted_lines(message: str) -> list[dict]:
     """Drive a real /chat request and return every structured log line it
@@ -92,11 +74,9 @@ def _all_emitted_lines(message: str) -> list[dict]:
         logger.removeHandler(handler)
     return [json.loads(ln) for ln in stream.getvalue().splitlines() if ln.strip()]
 
-
 # A single message that exercises the widest field set: routes to api_agent
 # (llm_call + tool events) AND db_agent (step events) in one run.
 WIDE_MESSAGE = "Check my orders and the shipment status with the carrier, and the escalation policy."
-
 
 def test_every_emitted_line_is_single_line_json():
     """The filelog json_parser assumes one JSON object per line. A multi-line
@@ -118,7 +98,6 @@ def test_every_emitted_line_is_single_line_json():
         obj = json.loads(line)  # raises if any line isn't standalone JSON
         assert isinstance(obj, dict)
 
-
 def test_timestamp_format_matches_the_receiver_layout():
     """Every emitted timestamp must parse under the exact strptime layout the
     filelog receiver is configured with. If the app changes its timestamp
@@ -129,7 +108,6 @@ def test_timestamp_format_matches_the_receiver_layout():
         # Python's strptime is the reference here; see the KNOWN-RISK note below
         # for why stanza (Go) may still differ on the colon-offset.
         datetime.datetime.strptime(ts, layout)
-
 
 def test_timestamp_is_rfc3339_colon_offset_KNOWN_RISK():
     """The app emits `...+00:00` (colon in the UTC offset). Python's %z accepts
@@ -144,7 +122,6 @@ def test_timestamp_is_rfc3339_colon_offset_KNOWN_RISK():
             "timestamp no longer carries a colon UTC offset — if the app moved "
             "to `+0000`, update the receiver layout note accordingly"
         )
-
 
 def test_no_emitted_field_is_silently_dropped_by_the_allowlist():
     """THE integration assertion. Collect every attribute the app emits across a
@@ -166,7 +143,6 @@ def test_no_emitted_field_is_silently_dropped_by_the_allowlist():
         f"ConfigMap), or confirm they are intentionally dropped."
     )
 
-
 def test_correlation_ids_present_on_every_line():
     """Every record must carry the four IDs (the whole correlation story rests
     on them) plus the envelope — matching what the receiver promotes and what
@@ -175,7 +151,6 @@ def test_correlation_ids_present_on_every_line():
         for key in ("run_id", "request_id", "session_id", "tenant_id",
                     "service.name", "event"):
             assert key in line, f"{line.get('event')} missing {key}"
-
 
 def test_service_name_is_the_value_the_mapping_mirrors():
     """service.name must be exactly what SEMCONV.md/HANDOFF.md record as the
@@ -188,7 +163,6 @@ def test_service_name_is_the_value_the_mapping_mirrors():
         f"section; the Collector passes it through verbatim so nothing breaks, "
         f"but the open decision's premise moved"
     )
-
 
 def test_gen_ai_mapping_source_fields_are_actually_emitted():
     """SEMCONV.md maps model_id/tool_name/agent/error_type/input_tokens/

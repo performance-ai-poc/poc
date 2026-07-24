@@ -60,13 +60,9 @@ def _correlation_meta(ctx: RequestContext | None) -> dict:
     ``RequestParams.Meta`` allows extra keys). HTTP headers do not work: the
     server never inspects them.
 
-    ``inject`` adds ``traceparent`` (and ``tracestate``/``baggage`` if present)
-    for the currently-active span — here, the ``execute_tool`` span in
-    app/retry.py — so the MCP server can parent its own ``mcp.tool`` span on
-    ours, producing one distributed trace across the process boundary
-    (docs/SEMCONV.md §6). This reuses the existing ``_meta`` channel; no new
-    transport. It is a no-op when no span is active (offline mode / OTel off),
-    and can never break a tool call."""
+    ``inject`` adds the W3C trace context for the active span so the MCP
+    server can parent its own span on ours, giving one distributed trace. A
+    no-op when no span is active, and it never raises."""
     meta = dict(ctx.as_dict()) if ctx is not None else {}
     try:
         from opentelemetry.propagate import inject

@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A2 (docs/ACCEPTANCE.md): run one /chat request with the
-# application completely unmodified; every api.request.* and agent.* event
-# from that request appears in OpenObserve, correlated by run_id.
-#
-# This is the single highest-value verification in the whole plan (see
-# docs/OTEL_PLAN.md Phase 2): it proves the pluginless claim. No file under
-# orchestrator-svc/ or mcp-server/ is touched by this script — it starts the
-# unmodified service the same way orchestrator-svc/README.md's own "Running
-# Locally" section documents, and only redirects that already-existing
-# stdout stream into a file for the Collector to read.
-#
-# Requires:
-#   - otel/docker-compose.otel.yml already running
-#     (docker compose -f otel/docker-compose.otel.yml up -d)
-#   - orchestrator-svc/.venv already created with requirements.txt installed
-#     (see orchestrator-svc/README.md "Running Locally")
-#
-# Usage: ./otel/tests/test_filelog_ingest.sh
 
 set -uo pipefail
 

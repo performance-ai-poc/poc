@@ -96,16 +96,9 @@ def record_error(span: Span, exc: BaseException) -> None:
 
 
 def extract_context(ctx: Any):
-    """Rebuild the OTel context from W3C trace headers the orchestrator carried
-    in the request ``_meta`` (``traceparent``/``tracestate``/``baggage``), so a
-    tool span parents onto the orchestrator's ``execute_tool`` span — one
-    distributed trace across the process boundary. Mirrors the inject side in
-    orchestrator-svc/app/mcp_client.py::_correlation_meta.
-
-    Returns ``None`` (meaning: use the current context, i.e. a new root span)
-    when no trace context is present, and never raises — trace propagation must
-    never fail a tool call.
-    """
+    """Rebuild the OTel context from the W3C trace headers the orchestrator put
+    in the request ``_meta``, so a tool span parents onto the caller's span.
+    Returns ``None`` (use the current context) when none is present; never raises."""
     try:
         from opentelemetry.propagate import extract
 

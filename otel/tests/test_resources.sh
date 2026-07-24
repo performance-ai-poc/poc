@@ -1,21 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A15 (docs/ACCEPTANCE.md): the Collector declares and stays
-# inside CPU, memory, and disk limits.
-#
-#   CPU request     100-200m
-#   CPU limit       500m
-#   Memory request  192-256Mi
-#   Memory limit    512Mi
-#   Persistent queue 256Mi-1Gi
-#
-# Static mode (no cluster needed): confirms the rendered DaemonSet declares
-# requests/limits inside these targets, and that no other workload in this
-# chart has any (so the Collector isn't just matching an existing
-# precedent, since docs/OTEL_PLAN.md/docs/ACCEPTANCE.md both note none
-# exists). "Stays inside" under real load is what test_saturation.sh checks
-# live; this script is the declared-values half of A15.
-#
-# Usage: ./otel/tests/test_resources.sh
 
 set -uo pipefail
 
@@ -102,7 +85,7 @@ for ds in daemonsets:
         ]
         for label, actual, lo, hi, unit in checks:
             if not (lo <= actual <= hi):
-                print(f"FAIL: {label} = {actual}{unit}, expected within [{lo}, {hi}]{unit} (docs/CONSTRAINTS.md C6)")
+                print(f"FAIL: {label} = {actual}{unit}, expected within [{lo}, {hi}]{unit}")
                 fail = True
             else:
                 print(f"    OK: {label} = {actual}{unit} (within [{lo}, {hi}]{unit})")
@@ -117,7 +100,7 @@ for v in ds["spec"]["template"]["spec"].get("volumes", []):
         else:
             size_mi = to_mib(size)
             if not (256 <= size_mi <= 1024):
-                print(f"FAIL: persistent queue sizeLimit = {size}, expected within [256Mi, 1Gi] (C6)")
+                print(f"FAIL: persistent queue sizeLimit = {size}, expected within [256Mi, 1Gi]")
                 fail = True
             else:
                 print(f"    OK: persistent queue sizeLimit = {size} (within [256Mi, 1Gi])")
@@ -126,14 +109,12 @@ if other_workloads:
     names = [w["metadata"]["name"] for w in other_workloads]
     unbounded = [w["metadata"]["name"] for w in other_workloads
                  if any(not c.get("resources") for c in w["spec"]["template"]["spec"]["containers"])]
-    print(f"    INFO: other workloads in this chart ({names}) - "
-          f"{len(unbounded)}/{len(names)} have no resources block at all, "
-          f"confirming the Collector is not just matching an existing precedent "
-          f"(docs/OTEL_PLAN.md: 'No resource limits on any application workload').")
+    print(f"    INFO: {len(unbounded)}/{len(names)} other workloads in this chart "
+          f"have no resources block at all.")
 
 if fail:
     sys.exit(1)
-print("PASS (static): Collector resource requests/limits and queue bound are all within docs/CONSTRAINTS.md C6 targets.")
+print("PASS (static): Collector resource requests/limits and queue bound are all within target.")
 PYEOF
 
 "${PYTHON_BIN}" "${CHECK_SCRIPT}" "${RENDERED_FILE}"

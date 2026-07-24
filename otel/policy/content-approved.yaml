@@ -1,19 +1,4 @@
-# Shape defined by policy.schema.json.
 captureMode: content-approved
 description: >
   Permits gen_ai.input.messages and gen_ai.output.messages to reach the
-  backend, once something emits them. gen_ai.system_instructions is never
-  permitted by any policy tier (docs/SEMCONV.md section 7 — content-approved
-  names only input/output messages) — attributes/privacy
-  (collector-config.yaml) deletes it unconditionally regardless of this
-  file.
-
-  As of this writing no application code emits gen_ai.input.messages or
-  gen_ai.output.messages at all (docs/SEMCONV.md section 7, otel/HANDOFF.md):
-  switching to this policy has no visible content-attribute effect until the
-  orchestrator team adds them. The gate itself — proven by
-  otel/tests/test_policy_switch.sh with hand-crafted spans that do carry
-  these attributes — is what this phase builds and demonstrates; it does not
-  depend on that handoff landing first.
-updatedBy: otel-infrastructure-workstream
-updatedAt: "2026-07-23T00:00:00Z"
+  backend. gen_ai.system_instructions is never permitted and is always deleted.

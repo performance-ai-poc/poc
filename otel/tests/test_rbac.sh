@@ -1,21 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A14 (docs/ACCEPTANCE.md): the Collector's ServiceAccount has
-# get/list/watch only. No create/update/patch/delete/exec. No Secrets
-# access. All host mounts readOnly: true.
-#
-# Two modes:
-#   - static (always available, no cluster needed): renders the chart with
-#     `helm template` and inspects the ClusterRole + DaemonSet directly.
-#     This is what ran during this workstream's build (Docker/cluster were
-#     unavailable — see otel/VERIFICATION_STATUS.md) and is genuine
-#     verification of the rendered manifests, just not of how a real
-#     Kubernetes API server enforces them.
-#   - live (if `kubectl cluster-info` succeeds): additionally runs
-#     `kubectl auth can-i` as the Collector's ServiceAccount to confirm the
-#     API server itself denies the disallowed verbs, not just that the
-#     YAML never asks for them.
-#
-# Usage: ./otel/tests/test_rbac.sh
 
 set -uo pipefail
 

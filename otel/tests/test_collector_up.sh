@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# Acceptance A1 (docs/ACCEPTANCE.md): a hand-crafted OTLP span sent via curl
-# appears in OpenObserve. This is Phase 1's only verification — it proves the
-# Collector receives, processes, and exports before anything touches the
-# application's real telemetry (Phase 2).
-#
-# Usage:
-#   docker compose -f otel/docker-compose.otel.yml up -d
-#   ./otel/tests/test_collector_up.sh
-#
-# Exits 0 on pass, 1 on failure, with the reason printed either way.
 
 set -uo pipefail
 

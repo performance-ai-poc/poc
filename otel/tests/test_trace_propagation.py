@@ -1,17 +1,8 @@
-"""Distributed-trace propagation contract: orchestrator inject -> _meta -> MCP
-extract yields ONE connected trace across the process boundary.
+"""Checks trace context round-trips across the MCP boundary: the orchestrator
+injects W3C context into _meta and the MCP side rebuilds it, so the tool span
+parents onto the caller's span. Exercises both real functions.
 
-Exercises BOTH real functions:
-  - orchestrator-svc/app/mcp_client.py::_correlation_meta  (injects traceparent)
-  - mcp-server/app/telemetry.py::extract_context           (rebuilds the parent)
-
-so the two halves can't silently drift out of the W3C contract. This is the
-offline proof of ACCEPTANCE A5 ("trace context crosses the MCP boundary"); the
-live span nesting inside a running MCP server still needs Docker
-(see otel/VERIFICATION_STATUS.md).
-
-Run with orchestrator-svc's venv (has opentelemetry + the app on path):
-    cd orchestrator-svc
+Run from orchestrator-svc/:
     ./.venv/Scripts/python.exe -m pytest ../otel/tests/test_trace_propagation.py -v
 """
 
@@ -48,13 +39,11 @@ tracer = trace.get_tracer("test-trace-propagation")
 
 CTX = RequestContext("run-1", "req-1", "sess-1", "tenant-1")
 
-
 def _fake_server_ctx(meta_dict: dict):
     """Mimic a FastMCP Context: ctx.request_context.meta is a RequestParams.Meta
     (extra='allow'), i.e. an object with the _meta keys as attributes."""
     meta = SimpleNamespace(**meta_dict)
     return SimpleNamespace(request_context=SimpleNamespace(meta=meta))
-
 
 def test_meta_carries_traceparent_for_the_active_span():
     with tracer.start_as_current_span("execute_tool") as client_span:
@@ -65,7 +54,6 @@ def test_meta_carries_traceparent_for_the_active_span():
         assert "traceparent" in meta, "no traceparent injected into _meta"
         trace_id_hex = format(client_span.get_span_context().trace_id, "032x")
         assert trace_id_hex in meta["traceparent"]
-
 
 def test_server_extract_parents_the_tool_span_on_the_client_span():
     # Client side: produce _meta within an active span.
@@ -88,13 +76,11 @@ def test_server_extract_parents_the_tool_span_on_the_client_span():
         "mcp.tool did not parent onto the orchestrator's execute_tool span"
     )
 
-
 def test_no_trace_context_yields_a_root_span_not_an_error():
     """When the client sent no trace context (offline mode / OTel off), the
     server must fall back to a new root span, never raise."""
     assert extract_context(_fake_server_ctx({"run_id": "run-1"})) is None
     assert extract_context(None) is None
-
 
 def test_correlation_meta_never_raises_without_active_span():
     """Outside any span, _correlation_meta still returns the four IDs (and simply

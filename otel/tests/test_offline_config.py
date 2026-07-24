@@ -1,11 +1,8 @@
-"""Offline validation of the Collector configuration — no Docker, no cluster.
+"""Offline validation of the Collector config (no Docker/cluster): YAML
+validity, processor order, redaction/allowlist parity between the standalone
+config and the k8s ConfigMap, capture-mode gating, and pinned images.
 
-These are the checks a senior reviewer would want green before ever starting
-the stack, and the ones that catch the "Collector misconfiguration fails
-silently by producing no data" class of bug (docs/CONSTRAINTS.md) as early as
-possible. Everything here runs from static files + `helm template`.
-
-Run (from orchestrator-svc/, whose venv has PyYAML + pytest):
+Run from orchestrator-svc/ (its venv has PyYAML + pytest):
     ./.venv/Scripts/python.exe -m pytest ../otel/tests/test_offline_config.py -v
 """
 
@@ -24,10 +21,6 @@ CHART_DIR = REPO_ROOT / "infra" / "helm" / "ai-chat"
 COMPOSE = REPO_ROOT / "otel" / "docker-compose.otel.yml"
 POLICY_DIR = REPO_ROOT / "otel" / "policy"
 
-# The exact processor order BUILD_PROMPT.md calls "load-bearing". k8sattributes
-# is inserted after `resource` only in the k8s config (it has no meaning
-# outside a cluster), so the two configs are checked against two expected
-# orders that differ only by that one insertion.
 EXPECTED_ORDER_STANDALONE = [
     "memory_limiter", "resource", "attributes/privacy",
     "transform/limits", "filter/noise", "batch",
@@ -37,10 +30,8 @@ EXPECTED_ORDER_K8S = [
     "transform/limits", "filter/noise", "batch",
 ]
 
-
 def _load_standalone() -> dict:
     return yaml.safe_load(STANDALONE.read_text())
-
 
 def _render_k8s_collector_config() -> dict:
     """helm template the chart, pull the otel-collector ConfigMap, parse the
@@ -57,48 +48,39 @@ def _render_k8s_collector_config() -> dict:
     embedded = cms[0]["data"]["collector-config.yaml"]
     return yaml.safe_load(embedded)
 
-
 def _keep_keys(cfg: dict) -> set[str]:
-    """Union of every attribute named in any keep_keys(...) across the config's
-    OTTL statements. This is the effective allowlist — anything not in it is
-    dropped before export (docs/CONSTRAINTS.md C4)."""
+    """Union of every attribute named in any keep_keys(...) — the effective
+    allowlist; anything not in it is dropped before export."""
     blob = yaml.safe_dump(cfg)
     keys: set[str] = set()
     for match in re.finditer(r"keep_keys\(attributes,\s*\[(.*?)\]\)", blob, re.DOTALL):
         keys.update(re.findall(r'"([^"]+)"', match.group(1)))
     return keys
 
-
 def _delete_keys(cfg: dict) -> set[str]:
     """Attribute names the attributes/privacy processor deletes outright."""
     priv = cfg["processors"]["attributes/privacy"]["actions"]
     return {a["key"] for a in priv if a.get("action") == "delete"}
 
-
 # ---------------------------------------------------------------------------
 # Validity
 # ---------------------------------------------------------------------------
-
 
 def test_standalone_config_is_valid_yaml():
     cfg = _load_standalone()
     assert "receivers" in cfg and "processors" in cfg and "exporters" in cfg
 
-
 def test_k8s_configmap_embedded_config_is_valid_yaml():
     cfg = _render_k8s_collector_config()
     assert "receivers" in cfg and "service" in cfg
-
 
 def test_compose_file_is_valid_yaml():
     doc = yaml.safe_load(COMPOSE.read_text())
     assert "services" in doc and "otel-collector" in doc["services"]
 
-
 # ---------------------------------------------------------------------------
 # Processor order is exactly as documented (the "load-bearing" ordering)
 # ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize("pipeline", ["traces", "logs"])
 def test_standalone_processor_order(pipeline):
@@ -106,30 +88,19 @@ def test_standalone_processor_order(pipeline):
     procs = cfg["service"]["pipelines"][pipeline]["processors"]
     assert procs == EXPECTED_ORDER_STANDALONE, f"{pipeline}: {procs}"
 
-
 @pytest.mark.parametrize("pipeline", ["traces", "logs"])
 def test_k8s_processor_order(pipeline):
     cfg = _render_k8s_collector_config()
     procs = cfg["service"]["pipelines"][pipeline]["processors"]
     assert procs == EXPECTED_ORDER_K8S, f"{pipeline}: {procs}"
 
-
 def test_privacy_runs_before_batch_and_exporter_in_both():
-    """The one ordering rule that matters for C3: unredacted data must pass
-    attributes/privacy + transform/limits before batch/export, or it can leave
-    the process unredacted."""
+    """Redaction must run before batch/export or unredacted data can leave."""
     for cfg in (_load_standalone(), _render_k8s_collector_config()):
         for pipeline in ("traces", "logs"):
             procs = cfg["service"]["pipelines"][pipeline]["processors"]
             assert procs.index("attributes/privacy") < procs.index("batch")
             assert procs.index("transform/limits") < procs.index("batch")
-
-
-# ---------------------------------------------------------------------------
-# Redaction + allowlist parity between the two configs (the duplication I
-# flagged in VERIFICATION_STATUS.md as the standing drift risk)
-# ---------------------------------------------------------------------------
-
 
 def test_redaction_delete_keys_match_between_configs():
     standalone = _delete_keys(_load_standalone())
@@ -139,7 +110,6 @@ def test_redaction_delete_keys_match_between_configs():
         f"standalone-only: {standalone - k8s}\nk8s-only: {k8s - standalone}"
     )
 
-
 def test_allowlist_matches_between_configs():
     standalone = _keep_keys(_load_standalone())
     k8s = _keep_keys(_render_k8s_collector_config())
@@ -148,19 +118,12 @@ def test_allowlist_matches_between_configs():
         f"standalone-only: {standalone - k8s}\nk8s-only: {k8s - standalone}"
     )
 
-
 def test_credentials_are_deleted_in_both():
     for cfg in (_load_standalone(), _render_k8s_collector_config()):
         deleted = _delete_keys(cfg)
         for must_delete in ("http.request.header.authorization", "api_key",
                             "gen_ai.system_instructions"):
             assert must_delete in deleted, f"{must_delete} not deleted"
-
-
-# ---------------------------------------------------------------------------
-# Capture-mode gate (Phase 3 / A9)
-# ---------------------------------------------------------------------------
-
 
 def _all_ottl_statements(cfg: dict) -> list[str]:
     """Every OTTL statement string across trace_statements + log_statements.
@@ -172,7 +135,6 @@ def _all_ottl_statements(cfg: dict) -> list[str]:
         for ctx in tl.get(group, []):
             stmts.extend(ctx.get("statements", []))
     return stmts
-
 
 def test_content_attributes_are_capture_mode_gated_in_both():
     for cfg in (_load_standalone(), _render_k8s_collector_config()):
@@ -186,12 +148,6 @@ def test_content_attributes_are_capture_mode_gated_in_both():
         # …but they ARE in the allowlist, so content-approved can keep them.
         assert "gen_ai.input.messages" in _keep_keys(cfg)
         assert "gen_ai.output.messages" in _keep_keys(cfg)
-
-
-# ---------------------------------------------------------------------------
-# Version pinning (C9)
-# ---------------------------------------------------------------------------
-
 
 def _image_refs(node) -> list[str]:
     """Recursively collect actual image references from parsed YAML:
@@ -212,7 +168,6 @@ def _image_refs(node) -> list[str]:
             refs.extend(_image_refs(item))
     return refs
 
-
 def test_no_latest_image_tags_anywhere():
     for path in (COMPOSE, CHART_DIR / "values.yaml"):
         for ref in _image_refs(yaml.safe_load(path.read_text())):
@@ -220,7 +175,6 @@ def test_no_latest_image_tags_anywhere():
                 f"{path} uses an unpinned/latest image tag: {ref!r}"
             )
             assert ":" in ref, f"{path} image has no explicit tag: {ref!r}"
-
 
 def test_collector_image_tag_matches_between_compose_and_chart():
     compose = yaml.safe_load(COMPOSE.read_text())
@@ -233,17 +187,14 @@ def test_collector_image_tag_matches_between_compose_and_chart():
         f"the two Collector deployments should run the same pinned build"
     )
 
-
 # ---------------------------------------------------------------------------
 # Policy files conform to the schema's shape (no jsonschema dependency)
 # ---------------------------------------------------------------------------
-
 
 @pytest.mark.parametrize("mode", ["metadata-only", "content-approved"])
 def test_policy_file_declares_matching_capture_mode(mode):
     doc = yaml.safe_load((POLICY_DIR / f"{mode}.yaml").read_text())
     assert doc["captureMode"] == mode
-
 
 def test_policy_schema_enumerates_exactly_the_two_modes():
     import json

@@ -97,10 +97,7 @@ def instrument(name: str):
             log_event(ids, "mcp.request", tool=name, args_digest=args_digest(call_args))
 
             start = time.perf_counter()
-            # Parent the tool span on the orchestrator's execute_tool span when
-            # the client carried W3C trace context in _meta (one distributed
-            # trace); falls back to a new root span (correlated by run_id) when
-            # it didn't. See app/telemetry.extract_context.
+            # Parent on the caller's span if it sent trace context, else root.
             parent_context = extract_context(ctx)
             span = tracer.start_span(
                 "mcp.tool", context=parent_context, attributes=span_attributes(ids, name)
