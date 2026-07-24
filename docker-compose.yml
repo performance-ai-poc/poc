@@ -85,7 +85,9 @@ services:
       OPENOBSERVE_ORG: default
       # Base64("admin@example-test.invalid:otel-poc-local-only").
       OPENOBSERVE_AUTH_HEADER: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
-      CAPTURE_MODE: metadata-only
+      # Overridable for the policy-switch demo:
+      #   CAPTURE_MODE=content-approved docker compose up -d --force-recreate otel-collector
+      CAPTURE_MODE: ${CAPTURE_MODE:-metadata-only}
     ports:
       - "4317:4317"
       - "4318:4318"
