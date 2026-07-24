@@ -85,7 +85,10 @@ async def _send_query(page: Page, worker: int, query: str, timeout_ms: int) -> N
     _log(worker, f"reply{f' (run_id={rid})' if rid else ''}: {(reply or '').strip()}")
 
 
-async def _run_worker(worker: int, url: str, query: str, headless: bool, repeat: int, timeout_ms: int) -> None:
+async def _run_worker(
+    worker: int, url: str, query: str, headless: bool,
+    repeat: int, timeout_ms: int, delay_s: float, hold_s: float,
+) -> None:
     async with async_playwright() as pw:
         x, y = GRID[worker % len(GRID)]
         browser = await pw.chromium.launch(
@@ -96,8 +99,12 @@ async def _run_worker(worker: int, url: str, query: str, headless: bool, repeat:
         try:
             await page.goto(url, wait_until="domcontentloaded")
             await page.wait_for_selector(INPUT_SELECTOR, timeout=timeout_ms)
-            for _ in range(repeat):
+            for turn in range(repeat):
+                if turn and delay_s:
+                    await asyncio.sleep(delay_s)
                 await _send_query(page, worker, query, timeout_ms)
+            if hold_s:
+                await asyncio.sleep(hold_s)
         except Exception as exc:  # noqa: BLE001 — one browser failing shouldn't sink the rest.
             # Playwright errors are multi-line; keep the log one line per event.
             detail = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
@@ -118,6 +125,8 @@ async def _main(args: argparse.Namespace) -> None:
                 headless=args.headless,
                 repeat=args.repeat,
                 timeout_ms=args.timeout,
+                delay_s=args.delay,
+                hold_s=args.hold,
             )
             for i in range(args.browsers)
         )
@@ -132,6 +141,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--repeat", type=int, default=1, help="Queries each browser sends (default: %(default)s).")
     parser.add_argument("--headless", action="store_true", help="Run headless (default: headed, so it's visible).")
     parser.add_argument("--timeout", type=int, default=60000, help="Per-step timeout in ms (default: %(default)s).")
+    parser.add_argument("--delay", type=float, default=0.0, help="Seconds to pause between turns (default: %(default)s).")
+    parser.add_argument("--hold", type=float, default=0.0, help="Seconds to keep windows open at the end (default: %(default)s).")
     parser.add_argument(
         "--query",
         action="append",

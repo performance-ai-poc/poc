@@ -26,6 +26,23 @@ stack running, the documented port-forward exposes it on `:8080`:
 make port-forward-customer-ui
 ```
 
+### Or run it entirely locally, no cluster
+
+The orchestrator's offline mode is deterministic and self-contained, so the demo
+runs with no Postgres, no MCP server and no LLM:
+
+```bash
+# 1. orchestrator (offline mode is the default)
+cd orchestrator-svc && python -m uvicorn app.main:app --port 8001
+
+# 2. build the UI and serve it with /chat proxied to the orchestrator,
+#    which is what nginx does in the deployed stack
+cd customer-ui && npm run build
+```
+
+Serve `customer-ui/dist` on `:8080` with any static server that forwards
+`POST /chat` to `http://127.0.0.1:8001/chat`, then point `--url` at it.
+
 ## Run
 
 ```bash
@@ -45,7 +62,15 @@ Windows are tiled in a 2x2 grid so up to four are visible side by side.
 | `--repeat` | `1` | Queries each browser sends |
 | `--headless` | off | Run without visible windows |
 | `--timeout` | `60000` | Per-step timeout (ms) |
+| `--delay` | `0` | Seconds between turns, to pace a live demo |
+| `--hold` | `0` | Seconds to keep windows open at the end |
 | `--query` | demo set | Query to send; repeatable, assigned round-robin |
+
+Offline replies come back in milliseconds, so for a watchable demo pace it:
+
+```bash
+python demo/browser_demo.py --repeat 3 --delay 2 --hold 5
+```
 
 Output, one line per event:
 
