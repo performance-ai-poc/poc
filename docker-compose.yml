@@ -50,6 +50,25 @@ services:
     volumes:
       - openobserve_data:/data
 
+  analytics-svc:
+    build: ./analytics-svc
+    depends_on:
+      openobserve:
+        condition: service_started
+    environment:
+      LOG_LEVEL: "INFO"
+      OPENOBSERVE_URL: http://openobserve:5080
+      OPENOBSERVE_ORG: default
+      OPENOBSERVE_STREAM: default
+      # Base64("admin@example-test.invalid:otel-poc-local-only").
+      OPENOBSERVE_AUTH: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
+      LIVE_WINDOW_MINUTES: "15"
+      BASELINE_WINDOW_MINUTES: "60"
+      COLLECTOR_MEMORY_LIMIT_MIB: "512"
+      CORS_ALLOWED_ORIGINS: "*"
+    ports:
+      - "8002:8002"
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
     command: ["--config=/etc/otelcol-contrib/collector-config.yaml"]
