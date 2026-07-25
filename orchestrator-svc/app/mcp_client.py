@@ -246,6 +246,98 @@ def _offline_http_post(args: dict) -> dict:
     }
 
 
+# --- DB tools (get_schema, run_query, search_documents) ---------------------
+# Data mirrors mcp-server/app/seed/seed_data.py. run_query is not a SQL engine:
+# it maps the SELECTs the DB agent's offline planner emits to canned rows, which
+# is all offline mode needs (the agents and their telemetry run without Postgres).
+
+
+def _schema_columns(*columns: tuple[str, str]) -> list[dict]:
+    return [
+        {"column": name, "data_type": data_type, "is_nullable": "NO", "position": i}
+        for i, (name, data_type) in enumerate(columns, start=1)
+    ]
+
+
+_OFFLINE_DB_SCHEMA = {
+    "orders": _schema_columns(
+        ("id", "integer"), ("customer_id", "integer"), ("status", "text"),
+        ("total_cents", "integer"), ("created_at", "timestamp with time zone"),
+    ),
+    "customers": _schema_columns(
+        ("id", "integer"), ("name", "text"), ("region", "text"),
+        ("created_at", "timestamp with time zone"),
+    ),
+    "shipments": _schema_columns(
+        ("id", "integer"), ("order_id", "integer"), ("carrier", "text"),
+        ("tracking_number", "text"), ("status", "text"), ("last_update", "timestamp with time zone"),
+    ),
+}
+
+_OFFLINE_DB_ORDERS = [
+    {"id": 1001, "customer_id": 1, "status": "failed", "total_cents": 12999, "created_at": "2026-07-21T10:00:00Z"},
+    {"id": 1002, "customer_id": 2, "status": "failed", "total_cents": 4500, "created_at": "2026-07-19T09:15:00Z"},
+    {"id": 1003, "customer_id": 3, "status": "failed", "total_cents": 78900, "created_at": "2026-07-18T14:40:00Z"},
+    {"id": 1009, "customer_id": 4, "status": "failed", "total_cents": 9900, "created_at": "2026-06-23T11:30:00Z"},
+]
+
+_OFFLINE_DB_CUSTOMERS = [
+    {"id": 1, "name": "Acme Robotics", "region": "us-west", "created_at": "2025-06-10T08:00:00Z"},
+    {"id": 2, "name": "Globex Logistics", "region": "us-east", "created_at": "2025-05-22T12:30:00Z"},
+    {"id": 3, "name": "Initech Retail", "region": "eu-central", "created_at": "2025-04-18T16:20:00Z"},
+]
+
+_OFFLINE_DB_SHIPMENTS = [
+    {"id": 2001, "order_id": 1001, "carrier": "UPS", "tracking_number": "1Z-ACME-0001", "status": "exception", "last_update": "2026-07-22T08:00:00Z"},
+    {"id": 2002, "order_id": 1002, "carrier": "FedEx", "tracking_number": "FX-GLOBEX-0002", "status": "lost", "last_update": "2026-07-20T09:30:00Z"},
+    {"id": 2003, "order_id": 1003, "carrier": "DHL", "tracking_number": "DHL-INITECH-0003", "status": "delayed", "last_update": "2026-07-19T13:15:00Z"},
+]
+
+_OFFLINE_DB_DOCUMENTS = [
+    {
+        "id": "doc_007#chunk_1",
+        "text": "Failed orders that remain unresolved for 48 hours must be escalated to the operations manager.",
+        "score": 0.95,
+    },
+]
+
+
+def _offline_get_schema(args: dict) -> dict:
+    requested = args.get("tables") or list(_OFFLINE_DB_SCHEMA)
+    tables = [t.strip() for t in requested if isinstance(t, str) and t.strip()]
+    if not tables:
+        raise McpToolError("get_schema requires at least one table name")
+    # An unknown table comes back with an empty column list, matching the live tool.
+    return {"tables": {t: _OFFLINE_DB_SCHEMA.get(t, []) for t in tables}}
+
+
+def _offline_run_query(args: dict) -> dict:
+    sql = str(args.get("sql", "")).lower()
+    max_rows = max(1, int(args.get("max_rows", 20)))
+    if "from customers" in sql:
+        rows = _OFFLINE_DB_CUSTOMERS
+    elif "from shipments" in sql:
+        rows = _OFFLINE_DB_SHIPMENTS
+    elif "status = 'failed'" in sql and "interval '7 days'" in sql:
+        rows = _OFFLINE_DB_ORDERS[:3]
+    elif "status = 'failed'" in sql:
+        rows = _OFFLINE_DB_ORDERS
+    elif "count(*)" in sql:
+        rows = [{"count": len(_OFFLINE_DB_ORDERS)}]
+    else:
+        rows = _OFFLINE_DB_ORDERS[:3]
+    rows = [dict(row) for row in rows[:max_rows]]
+    return {"rows": rows, "row_count": len(rows), "exec_ms": 0.0}
+
+
+def _offline_search_documents(args: dict) -> dict:
+    return {
+        "results": [dict(chunk) for chunk in _OFFLINE_DB_DOCUMENTS],
+        "retrieval_ids": [chunk["id"] for chunk in _OFFLINE_DB_DOCUMENTS],
+        "count": len(_OFFLINE_DB_DOCUMENTS),
+    }
+
+
 async def _call_tool_offline(tool_name: str, args: dict) -> dict:
     if tool_name == "fail_next":
         tool = str(args.get("tool", ""))
@@ -255,6 +347,12 @@ async def _call_tool_offline(tool_name: str, args: dict) -> dict:
 
     _offline_maybe_fail(tool_name)
 
+    if tool_name == "get_schema":
+        return _offline_get_schema(args)
+    if tool_name == "run_query":
+        return _offline_run_query(args)
+    if tool_name == "search_documents":
+        return _offline_search_documents(args)
     if tool_name == "list_endpoints":
         return {"endpoints": _OFFLINE_ENDPOINTS, "count": len(_OFFLINE_ENDPOINTS)}
     if tool_name == "http_get":
