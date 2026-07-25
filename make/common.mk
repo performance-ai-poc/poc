@@ -2,6 +2,8 @@ RELEASE ?= demo
 NAMESPACE ?= default
 TAG ?= demo
 CHART_DIR ?= ./infra/helm/ai-chat
+OBSERVABILITY_RELEASE ?= observability
+OBSERVABILITY_CHART_DIR ?= ./infra/helm/observability
 MINIKUBE_PROFILE ?= minikube
 
 .PHONY: help
@@ -13,6 +15,8 @@ help:
 	@echo "  make load-all"
 	@echo "  make prepare-all"
 	@echo "  make deploy"
+	@echo "  make deploy-app"
+	@echo "  make deploy-observability"
 	@echo "  make status"
 	@echo "  make port-forward-start"
 	@echo "  make port-forward-stop"
@@ -26,6 +30,13 @@ help:
 	@echo "  make rollout-postgres"
 	@echo "  make logs-postgres"
 	@echo "  make reset-stack"
+	@echo ""
+	@echo "Telemetry (otel/, standalone — not part of make dev):"
+	@echo "  make otel-up"
+	@echo "  make otel-down"
+	@echo "  make otel-logs"
+	@echo "  make otel-status"
+	@echo "  make otel-test"
 
 .PHONY: doctor
 doctor:
@@ -34,6 +45,7 @@ doctor:
 	@command -v minikube >/dev/null || { echo "minikube missing"; exit 1; }
 	@command -v helm >/dev/null || { echo "helm missing"; exit 1; }
 	@helm lint $(CHART_DIR)
+	@helm lint $(OBSERVABILITY_CHART_DIR)
 	@echo "Environment looks ready."
 
 .PHONY: status
@@ -57,6 +69,7 @@ dev: minikube-start prepare-all deploy status
 .PHONY: reset-stack
 reset-stack:
 	-helm uninstall $(RELEASE) -n $(NAMESPACE) >/dev/null 2>&1 || true
+	-helm uninstall $(OBSERVABILITY_RELEASE) -n $(NAMESPACE) >/dev/null 2>&1 || true
 	-kubectl delete job,deploy,sts,svc,secret,pvc -n $(NAMESPACE) --all --ignore-not-found >/dev/null 2>&1 || true
 	-kubectl delete pod -n $(NAMESPACE) --all --force --grace-period=0 --ignore-not-found >/dev/null 2>&1 || true
 	-ids=$$(docker ps -aq --filter ancestor=customer-ui:$(TAG) --filter ancestor=dashboard-ui:$(TAG) --filter ancestor=orchestrator-svc:$(TAG) --filter ancestor=mcp-server:$(TAG)); \

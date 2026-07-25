@@ -38,6 +38,7 @@ from app.logging_utils import (
     log_agent_tool_returned,
     log_agent_tool_selected,
 )
+from app.telemetry import context_attributes, record_error, tool_count, tracer
 
 # The exact marker the MCP server prepends to a retryable error's message
 # (mcp-server/app/tools/errors.py). This is the agreed client<->server contract:
@@ -167,10 +168,31 @@ async def call_tool_with_retry(
 
         started = time.perf_counter()
         try:
-            result = await tool_callable(tool_name, args)
+            with tracer.start_as_current_span(
+                "execute_tool",
+                attributes={
+                    **context_attributes(ctx),
+                    "gen_ai.tool.name": tool_name,
+                    "gen_ai.tool.type": "function",
+                    "app.agent.step.sequence": step_sequence,
+                    "app.agent.call.sequence": call_sequence,
+                    "app.retry.attempt": attempt,
+                    "app.tool.args_digest": args_digest,
+                },
+            ) as tool_span:
+                try:
+                    result = await tool_callable(tool_name, args)
+                    tool_span.set_attribute("app.outcome", "success")
+                except Exception as exc:
+                    retryable, failure_reason = _classify_exception(exc)
+                    tool_span.set_attribute("app.retryable", retryable)
+                    tool_span.set_attribute("app.failure.category", failure_reason)
+                    record_error(tool_span, exc, error_type=failure_reason)
+                    raise
         except Exception as exc:  # noqa: BLE001 — classified into a retry decision below.
             latency_ms = int((time.perf_counter() - started) * 1000)
             retryable, reason = _classify_exception(exc)
+            tool_count.add(1, {"tool": tool_name, "outcome": "error"})
             if retryable and idempotent and attempt < max_attempts:
                 log_agent_retried(ctx, {**base_meta, "retry.attempt": attempt, "reason": reason})
                 await asyncio.sleep(_backoff_delay(backoff, attempt))
@@ -186,6 +208,7 @@ async def call_tool_with_retry(
         # (200/201/404) is data, not a failure. Failures are raised, not
         # returned (see the module docstring / MCP error contract).
         latency_ms = int((time.perf_counter() - started) * 1000)
+        tool_count.add(1, {"tool": tool_name, "outcome": "success"})
         log_agent_tool_returned(
             ctx,
             {**base_meta, "latency_ms": latency_ms, "status": "success", **_safe_result_metadata(result)},

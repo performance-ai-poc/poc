@@ -45,11 +45,16 @@ Thumbs.db
 /multi_agent_client_architecture_v2.pdf
 
 opencode.json
+# Personal planning/handoff docs — kept local, not pushed
+otel/HANDOFF.md
+otel/VERIFICATION_STATUS.md
+otel/docs/
+otel/policy/README.md
 
-# Dependencies 
+# Dependencies
 node_modules/
 
-# Frontend caches and build tools 
+# Frontend caches and build tools
 .vite/
 .eslintcache
 tsconfig.tsbuildinfo

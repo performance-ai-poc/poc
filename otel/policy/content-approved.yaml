@@ -1,0 +1,4 @@
+captureMode: content-approved
+description: >
+  Permits gen_ai.input.messages and gen_ai.output.messages to reach the
+  backend. gen_ai.system_instructions is never permitted and is always deleted.

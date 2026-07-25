@@ -13,5 +13,12 @@ langgraph==1.2.9
 # required by fastapi.testclient.TestClient, so it is a hard dependency.
 httpx==0.28.1
 
+# Vendor-neutral OpenTelemetry SDK and standard FastAPI/HTTPX instrumentation.
+opentelemetry-api==1.41.0
+opentelemetry-sdk==1.41.0
+opentelemetry-exporter-otlp-proto-grpc==1.41.0
+opentelemetry-instrumentation-fastapi==0.62b0
+opentelemetry-instrumentation-httpx==0.62b0
+
 # Test-only dependencies.
 pytest==9.1.1

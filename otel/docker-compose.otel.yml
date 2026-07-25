@@ -1,0 +1,51 @@
+services:
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:v0.14.1
+    environment:
+      ZO_ROOT_USER_EMAIL: admin@example-test.invalid
+      ZO_ROOT_USER_PASSWORD: otel-poc-local-only
+      ZO_DATA_DIR: /data
+    ports:
+      - "5080:5080"
+    volumes:
+      - openobserve_data:/data
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: 1.0
+    # No healthcheck: OpenObserve's image is distroless (no shell/wget/curl), so
+    # a command-based compose healthcheck can't run. /healthz serves 200 fine;
+    # the Collector below just waits for this container to start, and its retry
+    # queue absorbs a not-yet-ready backend (fail-open).
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    command: ["--config=/etc/otelcol/collector-config.yaml"]
+    # Compose-only: the named queue volume is root-owned; the image's default
+    # non-root user can't write it. Kubernetes handles this via fsGroup.
+    user: "0:0"
+    volumes:
+      - ./collector-config.yaml:/etc/otelcol/collector-config.yaml:ro
+      - ./local-logs:/var/log/app:ro
+      - otelcol_storage:/var/lib/otelcol
+    environment:
+      DEPLOYMENT_ENVIRONMENT: local-compose
+      OPENOBSERVE_ORG: default
+      # Base64("admin@example-test.invalid:otel-poc-local-only"). Regenerate
+      # with `printf '<email>:<password>' | base64` if the credentials above
+      # change.
+      OPENOBSERVE_AUTH_HEADER: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
+      CAPTURE_MODE: ${CAPTURE_MODE:-metadata-only}
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "13133:13133" # health_check extension
+    depends_on:
+      openobserve:
+        condition: service_started
+    mem_limit: 512m
+    mem_reservation: 224m
+    cpus: 0.5
+
+volumes:
+  openobserve_data:
+  otelcol_storage:

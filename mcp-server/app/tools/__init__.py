@@ -31,7 +31,9 @@ import logging
 import time
 import typing
 
+from opentelemetry import context as otel_context
 from mcp.server.fastmcp import Context, FastMCP
+from opentelemetry.trace import set_span_in_context
 
 from app.config import settings
 from app.logging_utils import args_digest, ids_from_ctx, log_event
@@ -40,6 +42,7 @@ from app.tools.control import fail_next
 from app.tools.db_tools import get_schema, run_query, search_documents
 from app.tools.errors import RETRYABLE_MARKER, RetryableToolError
 from app.tools.http_tools import http_get, http_post, list_endpoints
+from app.telemetry import extract_context, record_error, span_attributes, tool_count, tracer
 
 # Keys we lift out of a tool's result dict into the mcp.response log line. All
 # are safe, non-PII metadata (counts, timings, status codes, opaque chunk IDs) —
@@ -94,6 +97,12 @@ def instrument(name: str):
             log_event(ids, "mcp.request", tool=name, args_digest=args_digest(call_args))
 
             start = time.perf_counter()
+            # Parent on the caller's span if it sent trace context, else root.
+            parent_context = extract_context(ctx)
+            span = tracer.start_span(
+                "mcp.tool", context=parent_context, attributes=span_attributes(ids, name)
+            )
+            span_token = otel_context.attach(set_span_in_context(span))
             try:
                 if settings.mock_tool_latency_ms > 0:
                     await asyncio.sleep(settings.mock_tool_latency_ms / 1000)
@@ -119,6 +128,8 @@ def instrument(name: str):
                     duration_ms=duration_ms,
                     **response_meta,
                 )
+                span.set_attribute("app.outcome", "success")
+                tool_count.add(1, {"tool": name, "outcome": "success"})
                 return result
             except Exception as exc:  # noqa: BLE001 — log then re-raise for FastMCP.
                 duration_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -133,7 +144,13 @@ def instrument(name: str):
                     error_type=type(exc).__name__,
                     retryable=retryable,
                 )
+                record_error(span, exc)
+                span.set_attribute("app.retryable", retryable)
+                tool_count.add(1, {"tool": name, "outcome": "error"})
                 raise
+            finally:
+                otel_context.detach(span_token)
+                span.end()
 
         # Make FastMCP see the handler's real parameters (see module docstring).
         wrapper.__annotations__ = dict(hints)

@@ -55,10 +55,22 @@ async def call_tool(tool_name: str, args: dict, *, ctx: RequestContext | None = 
 
 
 def _correlation_meta(ctx: RequestContext | None) -> dict:
-    """The four IDs as request ``_meta`` — the only channel the server reads them
-    from (``ctx.request_context.meta``; ``RequestParams.Meta`` allows extra keys).
-    HTTP headers do not work: the server never inspects them."""
-    return dict(ctx.as_dict()) if ctx is not None else {}
+    """The four IDs (plus W3C trace context) as request ``_meta`` — the only
+    channel the server reads them from (``ctx.request_context.meta``;
+    ``RequestParams.Meta`` allows extra keys). HTTP headers do not work: the
+    server never inspects them.
+
+    ``inject`` adds the W3C trace context for the active span so the MCP
+    server can parent its own span on ours, giving one distributed trace. A
+    no-op when no span is active, and it never raises."""
+    meta = dict(ctx.as_dict()) if ctx is not None else {}
+    try:
+        from opentelemetry.propagate import inject
+
+        inject(meta)
+    except Exception:  # noqa: BLE001 — telemetry must never break a tool call.
+        pass
+    return meta
 
 
 def _unwrap_structured(payload: Any) -> dict:

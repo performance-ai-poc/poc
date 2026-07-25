@@ -2,6 +2,10 @@
 
 Application chart for the local AI chat POC deployment.
 
+The OpenTelemetry Collector and OpenObserve are intentionally owned by the
+separate [`observability`](../observability/) chart so the observability team
+can install, configure, and upgrade its plane independently.
+
 It currently deploys:
 
 - `customer-ui` as a NodePort service on port `30080`.
@@ -23,6 +27,13 @@ make helm-lint
 make helm-template
 make deploy
 make uninstall
+```
+
+For the full stack, install the observability release first:
+
+```bash
+make deploy-observability
+make deploy-app
 ```
 
 ## Customer UI Ingress

@@ -1,0 +1,76 @@
+{{- if .Values.openObserve.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "observability.fullname" . }}-openobserve
+  labels:
+    app.kubernetes.io/name: openobserve
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  # OpenObserve is stateful (single node, RWO volume) — never run two replicas
+  # against the same claim. Recreate rather than rolling-update for the same
+  # reason.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openobserve
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openobserve
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: openobserve
+          image: "{{ .Values.openObserve.image.repository }}:{{ .Values.openObserve.image.tag }}"
+          imagePullPolicy: {{ .Values.openObserve.image.pullPolicy }}
+          env:
+            - name: ZO_ROOT_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "observability.fullname" . }}-openobserve
+                  key: ZO_ROOT_USER_EMAIL
+            - name: ZO_ROOT_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "observability.fullname" . }}-openobserve
+                  key: ZO_ROOT_USER_PASSWORD
+            - name: ZO_DATA_DIR
+              value: /data
+          ports:
+            - name: http
+              containerPort: {{ .Values.openObserve.service.port }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.openObserve.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if or .Values.openObserve.persistence.size .Values.openObserve.persistence.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.openObserve.persistence.existingClaim | default (printf "%s-openobserve" (include "observability.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

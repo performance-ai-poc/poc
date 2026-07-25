@@ -26,6 +26,7 @@ HELM_RUNTIME_VALUES := \
 .PHONY: helm-lint
 helm-lint:
 	helm lint $(CHART_DIR)
+	helm lint $(OBSERVABILITY_CHART_DIR)
 
 .PHONY: helm-template
 helm-template:
@@ -33,9 +34,11 @@ helm-template:
 		--namespace $(NAMESPACE) \
 		$(HELM_IMAGE_VALUES) \
 		$(HELM_RUNTIME_VALUES)
+	helm template $(OBSERVABILITY_RELEASE) $(OBSERVABILITY_CHART_DIR) \
+		--namespace $(NAMESPACE)
 
-.PHONY: deploy
-deploy: helm-lint
+.PHONY: deploy-app
+deploy-app: helm-lint
 	helm upgrade --install $(RELEASE) $(CHART_DIR) \
 		--namespace $(NAMESPACE) \
 		--create-namespace \
@@ -44,6 +47,24 @@ deploy: helm-lint
 		$(HELM_IMAGE_VALUES) \
 		$(HELM_RUNTIME_VALUES)
 
-.PHONY: uninstall
-uninstall:
+.PHONY: deploy-observability
+deploy-observability: helm-lint
+	helm upgrade --install $(OBSERVABILITY_RELEASE) $(OBSERVABILITY_CHART_DIR) \
+		--namespace $(NAMESPACE) \
+		--create-namespace \
+		--wait \
+		--timeout 5m
+
+.PHONY: deploy
+deploy: deploy-observability deploy-app
+
+.PHONY: uninstall-app
+uninstall-app:
 	-helm uninstall $(RELEASE) -n $(NAMESPACE)
+
+.PHONY: uninstall-observability
+uninstall-observability:
+	-helm uninstall $(OBSERVABILITY_RELEASE) -n $(NAMESPACE)
+
+.PHONY: uninstall
+uninstall: uninstall-app uninstall-observability

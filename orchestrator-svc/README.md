@@ -159,6 +159,10 @@ Configured through environment variables or `.env`:
 - `MODEL_API_KEY` - reserved for future model integration.
 - `DEFAULT_TENANT_ID` - fallback tenant when request body omits `tenant_id`.
 - `CORS_ALLOWED_ORIGINS` - comma-separated origins or `*`.
+- `OTEL_SERVICE_NAME` - OTel resource service name, default `orchestrator-svc`.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP gRPC Collector endpoint; unset disables export.
+- `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER` - standard signal exporter settings.
+- `OTEL_SDK_DISABLED` - set to `true` to disable SDK output.
 
 REST API Agent (Agent 2) — LLM + MCP wiring:
 
@@ -212,7 +216,9 @@ REST API Agent (Agent 2) — LLM + MCP wiring:
   bare keyword presence) before then.
 - `tenant_id` is trusted as caller input and has no authentication or authorization yet.
 - `/health` only proves the process is alive; it does not check downstream readiness.
-- No real OTel SDK/collector integration is wired into this service yet.
+- OTel traces, metrics, and logs are exported over OTLP when configured. The
+  Collector currently uses its debug exporter; backend selection remains a
+  Collector concern.
 - CORS defaults to `*`; set `CORS_ALLOWED_ORIGINS` before using this outside the demo/dev environment.
 - **Open decision — `service.name` naming discrepancy:** this codebase emits
   `service.name: "backend-api"` on every log line (see
@@ -244,8 +250,8 @@ REST API Agent (Agent 2) — LLM + MCP wiring:
 - Related to the above: this same class of problem affects the OTel doc's
   own example event schema, which uses `"event.type"` as the field key and
   includes `trace_id`/`span_id`, while the implemented schema uses `"event"`
-  as the key and correctly omits `trace_id`/`span_id` (per the "reserved for
-  future OTel SDK wiring" decision already documented above). This is a
+  as the key and intentionally omits `trace_id`/`span_id`; the OTel SDK carries
+  those identifiers in the exported telemetry context. This is a
   discrepancy in the OTel document's own example, not a code defect, but
   worth resolving in the same team conversation as the event-name vocabulary
   mismatch above, since both stem from the two documents not being fully

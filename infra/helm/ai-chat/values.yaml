@@ -24,7 +24,6 @@ customerUi:
       enabled: false
       secretName: ""
 
-
 orchestrator:
   replicaCount: 1
 
@@ -50,6 +49,8 @@ orchestrator:
     mcpServerUrl: ""
     defaultTenantId: default-tenant
     corsAllowedOrigins: "*"
+    otelExporterOtlpEndpoint: ""
+    otelServiceName: orchestrator-svc
 
 mcpServer:
   replicaCount: 1
@@ -67,6 +68,8 @@ mcpServer:
     statementTimeoutMs: "3000"
     mockToolLatencyMs: "0"
     logLevel: INFO
+    otelExporterOtlpEndpoint: ""
+    otelServiceName: mcp-server
 
 postgresql:
   enabled: true

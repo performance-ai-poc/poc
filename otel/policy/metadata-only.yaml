@@ -1,0 +1,4 @@
+captureMode: metadata-only
+description: >
+  Default policy. Prompt and completion content (gen_ai.input.messages /
+  gen_ai.output.messages) is deleted by the Collector before export.

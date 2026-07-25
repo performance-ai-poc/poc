@@ -36,11 +36,13 @@ from __future__ import annotations
 
 import time
 
+from app.config import settings
 from app.context import RequestContext
 from app.llm import LLMError, plan_api_calls, summarize_api_result
 from app.logging_utils import log_agent_llm_call
 from app.mcp_client import call_tool
 from app.retry import ToolError, call_tool_with_retry
+from app.telemetry import context_attributes, llm_token_usage, record_error, trace_agent_step, tracer
 
 GRAPH_NODE = "api_agent"
 
@@ -66,6 +68,7 @@ def _tool_callable(ctx: RequestContext):
     return _call
 
 
+@trace_agent_step
 async def api_agent_node(state):
     step = state["steps"][state["current_step"]]
     ctx: RequestContext = state["ctx"]
@@ -107,7 +110,37 @@ async def api_agent_node(state):
 
         # 2. Plan the HTTP calls (the sub-agent's single LLM call for this step).
         call_sequence += 1
-        plan, llm_meta = await plan_api_calls(instruction, api_catalog)
+        with tracer.start_as_current_span(
+            "gen_ai.client.inference",
+            attributes={
+                **context_attributes(ctx),
+                "gen_ai.operation.name": "chat",
+                "gen_ai.provider.name": "openai_compatible",
+                "gen_ai.request.model": settings.llm_model,
+                "gen_ai.agent.name": GRAPH_NODE,
+            },
+        ) as llm_span:
+            try:
+                plan, llm_meta = await plan_api_calls(instruction, api_catalog)
+                llm_span.set_attributes(
+                    {
+                        "gen_ai.response.model": llm_meta.get("model_id", settings.llm_model),
+                        "gen_ai.usage.input_tokens": llm_meta.get("input_tokens", 0),
+                        "gen_ai.usage.output_tokens": llm_meta.get("output_tokens", 0),
+                        "app.latency_ms": llm_meta.get("latency_ms", 0),
+                    }
+                )
+                llm_token_usage.add(
+                    llm_meta.get("input_tokens", 0),
+                    {"gen_ai.token.type": "input", "gen_ai.request.model": llm_meta.get("model_id", settings.llm_model)},
+                )
+                llm_token_usage.add(
+                    llm_meta.get("output_tokens", 0),
+                    {"gen_ai.token.type": "output", "gen_ai.request.model": llm_meta.get("model_id", settings.llm_model)},
+                )
+            except Exception as exc:
+                record_error(llm_span, exc)
+                raise
         log_agent_llm_call(
             ctx,
             {
@@ -183,9 +216,26 @@ async def api_agent_node(state):
         }
         return state
 
+    with tracer.start_as_current_span(
+        "gen_ai.client.inference",
+        attributes={
+            **context_attributes(ctx),
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": "openai_compatible",
+            "gen_ai.request.model": settings.llm_model,
+            "gen_ai.agent.name": GRAPH_NODE,
+            "app.call.type": "summarization",
+        },
+    ) as llm_span:
+        try:
+            summary = await summarize_api_result(instruction, calls_made, collected)
+        except Exception as exc:
+            record_error(llm_span, exc)
+            raise
+
     state["step_results"][step["key"]] = {
         "status": "success",
-        "summary": await summarize_api_result(instruction, calls_made, collected),
+        "summary": summary,
         "duration_ms": _duration_ms(),
         "calls_made": calls_made,
         "data": {"results": collected},

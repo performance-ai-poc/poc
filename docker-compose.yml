@@ -1,14 +1,3 @@
-# Local stack for the MCP server: Postgres 16 + the FastMCP server.
-#
-#   docker compose up --build
-#
-# The mcp-server service seeds the database deterministically (build_seed.py) and
-# then serves all seven tools over streamable-http on :8000. Postgres data
-# persists in the named volume; the healthcheck gates the server on a ready DB.
-#
-# Placement note: created at the repo root for the POC; coordinate final location
-# with the packaging owner if the stack later merges with the orchestrator's.
-
 services:
   postgres:
     image: postgres:16
@@ -40,10 +29,54 @@ services:
       STATEMENT_TIMEOUT_MS: "3000"
       MOCK_TOOL_LATENCY_MS: "0"
       LOG_LEVEL: "INFO"
+      OTEL_SERVICE_NAME: mcp-server
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
     # Seed (idempotent) then serve over streamable-http.
     command: ["sh", "-c", "python -m app.seed.build_seed && python -m app.server"]
     ports:
       - "8000:8000"
 
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:v0.14.1
+    environment:
+      ZO_ROOT_USER_EMAIL: admin@example-test.invalid
+      ZO_ROOT_USER_PASSWORD: otel-poc-local-only
+      ZO_DATA_DIR: /data
+    ports:
+      - "5080:5080"
+    volumes:
+      - openobserve_data:/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    command: ["--config=/etc/otelcol-contrib/collector-config.yaml"]
+    # Compose-only: the named volume for the persistent queue (/var/lib/otelcol)
+    # is created root-owned, and the image's default non-root user can't write
+    # it. The Kubernetes path handles this properly with fsGroup on an emptyDir,
+    # so this override is not needed there.
+    user: "0:0"
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol-contrib/collector-config.yaml:ro
+      - otelcol_storage:/var/lib/otelcol
+    environment:
+      DEPLOYMENT_ENVIRONMENT: local-compose
+      OPENOBSERVE_ORG: default
+      # Base64("admin@example-test.invalid:otel-poc-local-only").
+      OPENOBSERVE_AUTH_HEADER: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
+      # Overridable for the policy-switch demo:
+      #   CAPTURE_MODE=content-approved docker compose up -d --force-recreate otel-collector
+      CAPTURE_MODE: ${CAPTURE_MODE:-metadata-only}
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      openobserve:
+        condition: service_started
+
 volumes:
   mcp_pgdata:
+  openobserve_data:
+  otelcol_storage:

@@ -1,0 +1,225 @@
+# OpenTelemetry Collector config. Receives OTLP from the app and tails the
+# services' stdout, redacts sensitive data, enforces the capture policy, and
+# exports to OpenObserve. The app never depends on this Collector.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Scrape the Collector's own internal metrics so drop/queue counters are
+  # queryable in the backend.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otelcol-self
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["0.0.0.0:8888"]
+
+  # Read the services' structured JSON logs (one object per line).
+  filelog:
+    include:
+      - /var/log/app/*.log
+    start_at: beginning
+    storage: file_storage
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%dT%H:%M:%S.%f%z'
+      - type: remove
+        field: attributes.timestamp
+
+processors:
+  # Shed load first, before anything allocates.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:DEPLOYMENT_ENVIRONMENT}
+        action: upsert
+      - key: collector.name
+        value: ai-chat-poc-otel-collector
+        action: upsert
+
+  # Drop known-sensitive fields. Prompt/completion messages are handled
+  # conditionally in transform/limits (they depend on the capture policy);
+  # everything here is dropped unconditionally. db.statement/db.query.text are
+  # raw SQL from psycopg auto-instrumentation; http.url/url.full/url.query can
+  # carry a full URL and query string.
+  attributes/privacy:
+    actions:
+      - key: gen_ai.system_instructions
+        action: delete
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: api_key
+        action: delete
+      - key: db.statement
+        action: delete
+      - key: db.query.text
+        action: delete
+      - key: url.full
+        action: delete
+      - key: url.query
+        action: delete
+      - key: http.url
+        action: delete
+      - key: http.target
+        action: delete
+      - key: user.email
+        action: hash
+      - key: user.id
+        action: hash
+      - key: session.id
+        action: hash
+
+  # Apply the capture policy, map log fields onto OTel attribute names, and
+  # enforce the allowlist. CAPTURE_MODE is read at startup, so switching the
+  # policy requires recreating the Collector container.
+  transform/limits:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["capture.mode"], "${env:CAPTURE_MODE}")
+          - delete_key(attributes, "gen_ai.input.messages") where attributes["capture.mode"] != "content-approved"
+          - delete_key(attributes, "gen_ai.output.messages") where attributes["capture.mode"] != "content-approved"
+          # Normalize the SDK's app.<id> attributes to bare names so a span and
+          # a log line for the same request join on the same field.
+          - set(attributes["run_id"], attributes["app.run_id"]) where attributes["app.run_id"] != nil
+          - set(attributes["request_id"], attributes["app.request_id"]) where attributes["app.request_id"] != nil
+          - set(attributes["session_id"], attributes["app.session_id"]) where attributes["app.session_id"] != nil
+          - set(attributes["tenant_id"], attributes["app.tenant_id"]) where attributes["app.tenant_id"] != nil
+          - set(attributes["correlation.confidence"], "high") where attributes["run_id"] != nil
+          - keep_keys(attributes, ["run_id", "request_id", "session_id", "tenant_id",
+              "gen_ai.conversation.id",
+              "gen_ai.operation.name", "gen_ai.agent.name", "gen_ai.provider.name",
+              "gen_ai.request.model", "gen_ai.response.model",
+              "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens",
+              "gen_ai.tool.name", "gen_ai.tool.type", "gen_ai.data_source.id",
+              "gen_ai.workflow.name",
+              "app.outcome", "app.latency_ms", "app.call.type", "app.retryable",
+              "app.failure.category", "app.agent.step.sequence",
+              "app.agent.call.sequence", "app.retry.attempt", "app.tool.args_digest",
+              "error.type",
+              "http.request.method", "http.route", "http.response.status_code",
+              "url.scheme", "url.path", "server.address", "server.port",
+              "network.protocol.version", "client.address",
+              "http.method", "http.status_code", "http.host", "http.scheme",
+              "http.user_agent", "http.flavor", "http.server_name",
+              "net.host.port", "net.peer.ip", "net.peer.port", "asgi.event.type",
+              "db.system", "db.system.name", "db.namespace", "db.operation.name",
+              "db.collection.name",
+              "capture.mode", "correlation.confidence",
+              "gen_ai.input.messages", "gen_ai.output.messages"])
+          - truncate_all(attributes, 4096)
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["capture.mode"], "${env:CAPTURE_MODE}")
+          - delete_key(attributes, "gen_ai.input.messages") where attributes["capture.mode"] != "content-approved"
+          - delete_key(attributes, "gen_ai.output.messages") where attributes["capture.mode"] != "content-approved"
+          - set(attributes["gen_ai.agent.name"], attributes["agent"]) where attributes["agent"] != nil
+          - set(attributes["error.type"], attributes["error_type"]) where attributes["error_type"] != nil
+          - set(attributes["gen_ai.request.model"], attributes["model_id"]) where attributes["model_id"] != nil
+          - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"]) where attributes["input_tokens"] != nil
+          - set(attributes["gen_ai.usage.output_tokens"], attributes["output_tokens"]) where attributes["output_tokens"] != nil
+          - set(attributes["gen_ai.tool.name"], attributes["tool_name"]) where attributes["tool_name"] != nil
+          - set(attributes["gen_ai.operation.name"], "invoke_agent") where IsMatch(attributes["event"], "^agent\\.step_")
+          - set(attributes["gen_ai.operation.name"], "chat") where attributes["event"] == "agent.llm_call"
+          - set(attributes["gen_ai.operation.name"], "execute_tool") where IsMatch(attributes["event"], "^agent\\.(tool_selected|tool_returned|retried)$")
+          - set(attributes["gen_ai.tool.type"], "mcp") where IsMatch(attributes["event"], "^agent\\.(tool_selected|tool_returned|retried)$")
+          - set(attributes["http.route"], attributes["endpoint"]) where IsMatch(attributes["event"], "^api\\.request\\.")
+          - set(attributes["http.response.status_code"], attributes["status_code"]) where IsMatch(attributes["event"], "^api\\.request\\.")
+          - keep_keys(attributes, ["run_id", "request_id", "session_id", "tenant_id",
+              "service.name", "event", "graph.node", "step.sequence", "call.sequence",
+              "instruction_digest", "args_digest", "attempt", "retry.attempt",
+              "status_code", "row_count", "exec_ms", "count", "endpoint_count",
+              "retrieval_ids", "retryable", "duration_ms", "latency_ms", "status", "reason",
+              "gen_ai.agent.name", "error.type", "gen_ai.request.model",
+              "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens",
+              "gen_ai.tool.name", "gen_ai.operation.name", "gen_ai.tool.type",
+              "http.route", "http.response.status_code",
+              "route.reason_code", "gen_ai.provider.name",
+              "capture.mode", "correlation.confidence",
+              "gen_ai.input.messages", "gen_ai.output.messages"])
+          - truncate_all(attributes, 4096)
+          - set(attributes["correlation.confidence"], "medium") where attributes["run_id"] != nil and attributes["correlation.confidence"] == nil
+
+  # Drop log lines that failed JSON parsing (no event) and unnamed spans.
+  filter/noise:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["event"] == nil'
+    traces:
+      span:
+        - 'name == ""'
+
+  batch:
+    timeout: 3s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # Backs the export queue's offsets. The only writable path.
+  file_storage:
+    directory: /var/lib/otelcol
+    timeout: 1s
+
+exporters:
+  otlphttp:
+    endpoint: http://openobserve:5080/api/${env:OPENOBSERVE_ORG}
+    headers:
+      Authorization: ${env:OPENOBSERVE_AUTH_HEADER}
+    sending_queue:
+      enabled: true
+      queue_size: 5000
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 120s
+
+service:
+  extensions: [health_check, file_storage]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, attributes/privacy, transform/limits, filter/noise, batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, resource, attributes/privacy, transform/limits, filter/noise, batch]
+      exporters: [otlphttp]
+    metrics:
+      receivers: [prometheus]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888

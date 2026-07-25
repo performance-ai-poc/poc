@@ -48,6 +48,27 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.orchestrator.env.logLevel | quote }}
 
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.orchestrator.env.otelServiceName | quote }}
+
+            # Send to the Collector on this pod's own node (DaemonSet hostPort).
+            # Export is async, so a down Collector never affects the app.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.orchestrator.env.otelExporterOtlpEndpoint | default "http://$(HOST_IP):4317" | quote }}
+
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+
             - name: AGENT_LIVE_CALLS
               value: {{ .Values.orchestrator.env.agentLiveCalls | quote }}
 

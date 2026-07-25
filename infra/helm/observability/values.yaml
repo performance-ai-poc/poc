@@ -1,0 +1,68 @@
+nameOverride: ""
+fullnameOverride: ""
+
+# Node-local Collector that receives OTLP from instrumented workloads, tails
+# Kubernetes container logs, applies governance policy, and exports telemetry.
+otelCollector:
+  enabled: true
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.153.0"
+    pullPolicy: IfNotPresent
+
+  # metadata-only removes model input/output content. content-approved allows it.
+  captureMode: metadata-only
+  deploymentEnvironment: kubernetes
+
+  resources:
+    requests:
+      cpu: 150m
+      memory: 224Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  queue:
+    sizeLimit: 1Gi
+
+  openobserve:
+    # Empty uses the OpenObserve service installed by this chart.
+    endpoint: ""
+    org: default
+    # Empty derives Basic auth from openObserve.auth below.
+    authHeader: ""
+
+openObserve:
+  enabled: true
+
+  image:
+    repository: public.ecr.aws/zinclabs/openobserve
+    tag: "v0.14.1"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: NodePort
+    port: 5080
+    nodePort: 30083
+
+  # Local POC defaults only. Override them in shared environments.
+  auth:
+    rootEmail: admin@example-test.invalid
+    rootPassword: otel-poc-local-only
+
+  persistence:
+    # Reuse a pre-existing PVC during migration; empty creates one for this chart.
+    existingClaim: ""
+    # Keep telemetry data if the observability Helm release is uninstalled.
+    keepOnDelete: true
+    size: 2Gi
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

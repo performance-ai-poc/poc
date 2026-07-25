@@ -22,6 +22,7 @@ from app.context import RequestContext
 from app.logging_utils import log_agent_llm_call
 from app.orchestrator.state import RunState
 from app.retry import ToolError
+from app.telemetry import trace_agent_step
 
 from .db.llm_adapter import (
     DBLLMError,
@@ -80,9 +81,9 @@ def _document_query(instruction: str) -> str:
     return request
 
 
+@trace_agent_step
 async def db_agent_node(state: RunState) -> RunState:
     """Execute the active parent step through the DB agent."""
-
     step = state["steps"][state["current_step"]]
 
     if FORCE_FAILURE_TRIGGER in state["message"]:

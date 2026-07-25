@@ -3,3 +3,9 @@ psycopg[binary]==3.2.3
 psycopg-pool==3.2.4
 pydantic-settings==2.7.0
 pytest==8.3.4
+
+# Vendor-neutral OpenTelemetry SDK and OTLP export.
+opentelemetry-api==1.41.0
+opentelemetry-sdk==1.41.0
+opentelemetry-exporter-otlp-proto-grpc==1.41.0
+opentelemetry-instrumentation-psycopg==0.62b0

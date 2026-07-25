@@ -48,3 +48,19 @@ spec:
               value: {{ .Values.mcpServer.env.mockToolLatencyMs | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.mcpServer.env.logLevel | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.mcpServer.env.otelServiceName | quote }}
+            # DaemonSet Collector on this node's hostPort (see orchestrator
+            # deployment for the rationale). Fail-open by async export.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.mcpServer.env.otelExporterOtlpEndpoint | default "http://$(HOST_IP):4317" | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"

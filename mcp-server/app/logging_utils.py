@@ -18,8 +18,9 @@ two services' logs line up field-for-field once something is tailing both:
   redaction layer exists.
 
 This module only ever writes to local stdout — no synchronous call to any
-external collector — in keeping with the fail-open discipline. A future OTel
-layer can tail/parse this stream without changing any call site.
+external collector — in keeping with the fail-open discipline. The OTel
+bootstrap adds a separate LoggingHandler to this logger when OTLP logs are
+enabled, without changing any call site.
 """
 
 from __future__ import annotations
