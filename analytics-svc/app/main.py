@@ -35,7 +35,7 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict:
     # Zero dependencies on the telemetry backend, so liveness never depends on
-    # whether OpenObserve is reachable — the dashboard degrades to unavailable
+    # whether OpenObserve is reachable, so the dashboard degrades to unavailable
     # tiles instead of the service reporting itself unhealthy.
     return {"status": "ok", "service": "analytics-svc"}
 

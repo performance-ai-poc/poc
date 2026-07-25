@@ -48,7 +48,7 @@ def test_disjoint_distributions_exceed_the_high_band():
 
 def test_psi_is_symmetric_in_shape_not_direction():
     # PSI is not formally symmetric, but both directions should agree on "there
-    # is substantial drift here" — a sanity check that neither direction is
+    # is substantial drift here", a sanity check that neither direction is
     # accidentally near zero.
     a = [200, 50, 10]
     b = [10, 50, 200]

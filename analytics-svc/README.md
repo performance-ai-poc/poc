@@ -6,7 +6,7 @@ metrics the dashboard renders.
 
 It is a separate service from `orchestrator-svc` on purpose: a slow or failing
 drift query can never touch the chat request path, and the whole thing fails
-open — if the backend is unreachable, the dashboard shows greyed-out
+open: if the backend is unreachable, the dashboard shows greyed-out
 (`unavailable`) tiles instead of anything breaking.
 
 ## What it computes
@@ -29,8 +29,8 @@ missing value as if it were a direct measurement.
 
 ## Endpoints
 
-- `GET /health` — liveness, no dependency on the backend.
-- `GET /dashboard` — the full dashboard payload, typed to
+- `GET /health`: liveness, no dependency on the backend.
+- `GET /dashboard`: the full dashboard payload, typed to
   `dashboard-ui/src/types.ts`.
 
 Behind the dashboard's nginx it is reached at `/api/analytics/*`.

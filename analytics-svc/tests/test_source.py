@@ -109,7 +109,7 @@ def test_query_hits_the_search_api_with_the_given_micro_window():
 
 def test_metric_value_reads_the_metric_as_its_own_stream():
     # OpenObserve stores each metric as a stream named after the metric, with
-    # the sample in a `value` column — so the query must be FROM "<metric>",
+    # the sample in a `value` column, so the query must be FROM "<metric>",
     # not a metric_name filter on a shared stream.
     seen = {}
 

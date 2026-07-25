@@ -165,6 +165,6 @@ def build_dashboard(client: httpx.Client | None = None) -> DashboardData:
 def dashboard() -> DashboardData:
     try:
         return build_dashboard()
-    except Exception:  # noqa: BLE001 — last-resort fail-open, never 500 the UI
+    except Exception:  # noqa: BLE001 last-resort fail-open, never 500 the UI
         logger.exception("dashboard build failed; returning all-unavailable")
         return _all_unavailable()

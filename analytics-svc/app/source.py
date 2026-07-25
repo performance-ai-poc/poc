@@ -120,7 +120,7 @@ def categorical_values(
     client: httpx.Client | None = None,
 ) -> list[str]:
     """Every value of a discrete `field` from records with the given `event`,
-    over the window — the raw material for categorical (mix) drift."""
+    over the window, the raw material for categorical (mix) drift."""
     sql = (
         f'SELECT "{field}" AS label FROM "{settings.openobserve_stream}" '
         f"WHERE event = '{event}'"
@@ -145,7 +145,7 @@ def metric_value(
     metric is not present. Used for the resource tiles.
 
     OpenObserve stores each metric as its own stream (the metric name is the
-    stream name), with the sample in a `value` column — so we read straight
+    stream name), with the sample in a `value` column, so we read straight
     FROM the metric stream rather than filtering a metric_name column.
     """
     sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
