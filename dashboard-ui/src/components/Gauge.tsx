@@ -34,7 +34,7 @@ export default function Gauge({ value, band, displayValue }: GaugeProps) {
 
       <GaugeComponent
           type="semicircle"
-          marginInPercent={0.015} // Pushes the arc outward to the true edge of the container
+          marginInPercent={0.015} 
           value={clamped}
           minValue={0}
           maxValue={100}
@@ -69,7 +69,7 @@ export default function Gauge({ value, band, displayValue }: GaugeProps) {
           marginTop: "1px",
           fontSize: "10px",
           color: "#9ca3af",
-          boxSizing: "border-box" // Ensures padding doesn't break the 100% width
+          boxSizing: "border-box" 
         }}
       >
         <span>LOW</span>

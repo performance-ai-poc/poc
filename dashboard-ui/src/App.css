@@ -1,8 +1,3 @@
-.dashboard-shell {
-  display: flex;
-  min-height: 100vh;
-}
-
 /* ---------- Sidebar ---------- */
 
 .sidebar {
@@ -109,13 +104,6 @@
 
 /* ---------- Top header bar ---------- */
 
-.dashboard-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -199,12 +187,11 @@
 /* ---------- Main content ---------- */
 
 .dashboard-main {
-  flex: 1;
+  min-height: 100vh;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 1400px;
 }
 
 .panel {
