@@ -50,3 +50,17 @@ otel/HANDOFF.md
 otel/VERIFICATION_STATUS.md
 otel/docs/
 otel/policy/README.md
+
+# Dependencies
+node_modules/
+
+# Frontend caches and build tools
+.vite/
+.eslintcache
+tsconfig.tsbuildinfo
+
+# Node Debug Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
