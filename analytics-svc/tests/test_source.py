@@ -17,6 +17,7 @@ from app import source
 from app.source import (
     SourceUnavailable,
     categorical_values,
+    metric_value,
     numeric_values,
     windows,
 )
@@ -102,6 +103,32 @@ def test_query_hits_the_search_api_with_the_given_micro_window():
     sql = seen["body"]["query"]["sql"]
     assert "input_tokens" in sql
     assert "agent.llm_call" in sql
+
+
+# -------------------------------------------------------------- metrics ---
+
+def test_metric_value_reads_the_metric_as_its_own_stream():
+    # OpenObserve stores each metric as a stream named after the metric, with
+    # the sample in a `value` column — so the query must be FROM "<metric>",
+    # not a metric_name filter on a shared stream.
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"hits": [{"value": 203870208.0}]})
+
+    val = metric_value("otelcol_process_memory_rss", 0, 1, client=_client(handler))
+    assert val == pytest.approx(203870208.0)
+    sql = seen["body"]["query"]["sql"]
+    assert '"otelcol_process_memory_rss"' in sql
+    assert "metric_name" not in sql
+
+
+def test_metric_value_returns_none_when_metric_stream_is_empty():
+    def handler(request):
+        return httpx.Response(200, json={"hits": []})
+
+    assert metric_value("otelcol_process_memory_rss", 0, 1, client=_client(handler)) is None
 
 
 # ------------------------------------------------------------- windows ---

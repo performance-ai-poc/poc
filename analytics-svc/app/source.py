@@ -142,12 +142,13 @@ def metric_value(
     client: httpx.Client | None = None,
 ) -> float | None:
     """Latest value of a Collector self-metric over the window, or None if the
-    metric is not present. Used for the resource tiles."""
-    sql = (
-        f"SELECT * FROM {settings.openobserve_stream} "
-        f"WHERE metric_name = '{metric_name}' "
-        f"ORDER BY _timestamp DESC LIMIT 1"
-    )
+    metric is not present. Used for the resource tiles.
+
+    OpenObserve stores each metric as its own stream (the metric name is the
+    stream name), with the sample in a `value` column — so we read straight
+    FROM the metric stream rather than filtering a metric_name column.
+    """
+    sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     if not hits:
         return None
