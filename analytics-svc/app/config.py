@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     live_window_minutes: int = 15
     baseline_window_minutes: int = 60
 
+    # The Collector's memory_limiter ceiling, used to turn the Collector's raw
+    # RSS self-metric into the Memory tile's percent. Must match the limit set
+    # in the collector config / Helm values (512 MiB there).
+    collector_memory_limit_mib: int = 512
+
     # Comma-separated allowed CORS origins, or "*". The dashboard is served from
     # its own nginx origin and proxies here, so "*" is the dev-friendly default.
     cors_allowed_origins: str = "*"

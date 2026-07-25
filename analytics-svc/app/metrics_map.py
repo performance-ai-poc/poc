@@ -116,7 +116,11 @@ class ResourceSignal:
 # signal in this stack yet.
 RESOURCE_SIGNALS: list[ResourceSignal] = [
     ResourceSignal(id="memory", label="Memory", metric="otelcol_process_memory_rss"),
-    ResourceSignal(id="compute", label="Compute", metric="otelcol_process_cpu_seconds"),
+    ResourceSignal(
+        id="compute",
+        label="Compute",
+        reason="CPU self-metric is a counter; a utilisation % needs rate sampling over an interval",
+    ),
     ResourceSignal(
         id="storage",
         label="Storage",
