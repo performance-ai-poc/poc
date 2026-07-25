@@ -2,12 +2,12 @@ import PanelHeader from "./components/PanelHeader";
 import Gauge from "./components/Gauge";
 import RingMetric from "./components/RingMetric";
 import CorrectiveOptions from "./components/CorrectiveOptions";
-import { mockDashboardData } from "./mockData";
+import { useDashboardData } from "./useDashboardData";
 import "./App.css";
 
 function App() {
   const { driftMetrics, technicalMetrics, resourceMetrics, correctiveActions } =
-    mockDashboardData;
+    useDashboardData();
 
   return (
     <main className="dashboard-main">
@@ -20,7 +20,9 @@ function App() {
               <Gauge
                 value={metric.value}
                 band={metric.band}
-                displayValue={`${metric.value}%`}
+                displayValue={
+                  metric.source === "unavailable" ? "N/A" : `${metric.value}%`
+                }
               />
             </div>
           ))}
@@ -37,6 +39,7 @@ function App() {
                 label={metric.label.toUpperCase()}
                 value={metric.value}
                 band={metric.band}
+                displayValue={metric.source === "unavailable" ? "N/A" : undefined}
               />
             ))}
           </div>
@@ -51,7 +54,9 @@ function App() {
                 <Gauge
                   value={metric.percent}
                   band={metric.band}
-                  displayValue={`${metric.percent}%`}
+                  displayValue={
+                    metric.source === "unavailable" ? "N/A" : `${metric.percent}%`
+                  }
                 />
               </div>
             ))}
