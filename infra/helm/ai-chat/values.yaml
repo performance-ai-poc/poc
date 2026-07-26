@@ -109,3 +109,48 @@ dashboardUi:
     type: NodePort
     port: 80
     nodePort: 30082
+
+# Read-only drift/analytics plane behind the dashboard's /api/analytics/ route.
+analytics:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: analytics-svc
+    tag: demo
+    pullPolicy: Never
+
+  service:
+    type: NodePort
+    port: 8002
+    nodePort: 30084
+
+  env:
+    appEnv: production
+    host: 0.0.0.0
+    port: "8002"
+    logLevel: INFO
+    # OpenObserve service installed by the observability chart. Override the
+    # release prefix if that chart is installed under a different release name.
+    openobserveUrl: http://demo-observability-openobserve:5080
+    openobserveOrg: default
+    openobserveStream: default
+    # Read-only Basic auth header; local-only demo default (base64 of the
+    # observability chart's default root creds). Stored in a secret.
+    openobserveAuth: "Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ=="
+    # Live window (most recent N minutes) vs the baseline window immediately
+    # before it. Drift is how far live has moved from baseline.
+    liveWindowMinutes: "15"
+    baselineWindowMinutes: "60"
+    # Must match the Collector's memory_limiter so the Memory tile reads as a
+    # correct percentage of the limit.
+    collectorMemoryLimitMib: "512"
+    corsAllowedOrigins: "*"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 192Mi

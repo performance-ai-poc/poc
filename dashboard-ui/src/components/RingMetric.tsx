@@ -4,6 +4,7 @@ interface RingMetricProps {
   label: string;
   value: number;
   band: Band;
+  displayValue?: string;
 }
 
 const RADIUS = 30;
@@ -18,7 +19,7 @@ const BAND_COLORS: Record<Band, { fg: string; bg: string }> = {
   high: { fg: "#dc2626", bg: "#fee2e2" },   
 };
 
-export default function RingMetric({ label, value, band }: RingMetricProps) {
+export default function RingMetric({ label, value, band, displayValue }: RingMetricProps) {
   const filled = Math.max(0, Math.min(100, value * 4));
   const offset = CIRCUMFERENCE * (1 - filled / 100);
   
@@ -67,7 +68,7 @@ export default function RingMetric({ label, value, band }: RingMetricProps) {
       </svg>
       
       <div className="ring-value" style={{ fontSize: "20px", fontWeight: "bold", marginTop: "0.5rem" }}>
-        {value}
+        {displayValue ?? value}
       </div>
       
     </div>
