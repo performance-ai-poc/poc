@@ -74,6 +74,14 @@ function App() {
     setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500)
   }
 
+  function startNewChat() {
+    setMessages([])
+    setMessage('')
+    setSessionId(undefined)
+    setCopiedId(null)
+    inputRef.current?.focus()
+  }
+
   return (
     <main className="chat">
       <div className="chat-container">
@@ -83,6 +91,14 @@ function App() {
             <h1>AI Chat</h1>
             <p className="subtitle">Ask a question and get a reply from the assistant.</p>
           </div>
+          <button
+            type="button"
+            className="chat-new"
+            onClick={startNewChat}
+            disabled={messages.length === 0 && !sessionId}
+          >
+            New chat
+          </button>
         </header>
       </div>
 
@@ -165,6 +181,11 @@ function App() {
 
       <div className="chat-container">
         <form className="chat-form" onSubmit={handleSubmit}>
+          {sessionId && (
+            <div className="chat-session" title={sessionId}>
+              Session {sessionId.slice(0, 8)}
+            </div>
+          )}
           <div className="chat-field">
             <textarea
               ref={inputRef}
