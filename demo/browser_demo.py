@@ -29,7 +29,16 @@ from playwright.async_api import Page, async_playwright
 # Send rather than press Enter.
 INPUT_SELECTOR = "textarea.chat-input"
 SEND_SELECTOR = "button.chat-send"
-REPLY_SELECTOR = ".chat-reply p"
+# The chat is a scrolling thread, not a single reply slot: each turn appends a
+# user message immediately, then a reply/error once the turn completes. So the
+# *last* node in .chat-thread once the turn is done is reliably this turn's
+# result — we check that node rather than grabbing the first match of a
+# reply/error selector, which would find a stale one from an earlier turn once
+# --repeat sends more than once. The typing indicator shares the .chat-message
+# class (for its entrance animation), so "done" means both the message count
+# went up *and* no typing indicator remains — see TYPING_SELECTOR below.
+MESSAGE_SELECTOR = ".chat-thread .chat-message"
+TYPING_SELECTOR = ".chat-typing"
 ERROR_SELECTOR = ".chat-error"
 
 # The demo scenario query plus two narrower ones, so parallel browsers send a mix
@@ -67,20 +76,52 @@ async def _send_query(page: Page, worker: int, query: str, timeout_ms: int) -> N
             except Exception:  # noqa: BLE001 — telemetry nicety, never fail the run over it.
                 pass
 
+    # The composer clears itself once a message is sent, so the Send button goes
+    # right back to disabled (now because the field is empty, not because a
+    # request is in flight) — it never becomes ":not([disabled])" again, so we
+    # can't wait on that. Instead wait for the thread to grow by two nodes (the
+    # user's own message plus the reply/error) *and* for the typing indicator to
+    # be gone — the indicator itself briefly satisfies the count check, so count
+    # alone isn't enough.
+    before_count = await page.locator(MESSAGE_SELECTOR).count()
+
     page.on("response", _on_response)
     try:
         await page.click(SEND_SELECTOR)
-        # The Send button re-enables (loading -> false) once the turn completes.
-        await page.wait_for_selector(f"{SEND_SELECTOR}:not([disabled])", timeout=timeout_ms)
+        await page.wait_for_function(
+            """([sel, typingSel, before]) => {
+                const total = document.querySelectorAll(sel).length;
+                const typing = document.querySelector(typingSel);
+                return total > before + 1 && !typing;
+            }""",
+            arg=[MESSAGE_SELECTOR, TYPING_SELECTOR, before_count],
+            timeout=timeout_ms,
+        )
     finally:
         page.remove_listener("response", _on_response)
 
-    error = await page.query_selector(ERROR_SELECTOR)
-    if error is not None:
-        _log(worker, f"ERROR: {(await error.inner_text()).strip()}")
+    # Read the error/reply text directly off the last message node in one JS
+    # call — simpler and more reliable than chaining Playwright locators off
+    # `.last`, which didn't reliably scope the follow-up `.locator()` search
+    # to that single element in testing.
+    result = await page.evaluate(
+        """([messageSel, errorSel]) => {
+            const nodes = document.querySelectorAll(messageSel);
+            const last = nodes[nodes.length - 1];
+            if (!last) return { error: null, reply: null };
+            const err = last.querySelector(errorSel);
+            if (err) return { error: err.innerText, reply: null };
+            const p = last.querySelector("p");
+            return { error: null, reply: p ? p.innerText : "" };
+        }""",
+        [MESSAGE_SELECTOR, ERROR_SELECTOR],
+    )
+
+    if result["error"] is not None:
+        _log(worker, f"ERROR: {result['error'].strip()}")
         return
 
-    reply = await page.text_content(REPLY_SELECTOR)
+    reply = result["reply"]
     rid = run_id.get("value", "")
     _log(worker, f"reply{f' (run_id={rid})' if rid else ''}: {(reply or '').strip()}")
 
