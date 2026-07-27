@@ -8,4 +8,16 @@ export default defineConfig({
     react(),
     babel({ presets: [reactCompilerPreset()] })
   ],
+  server: {
+    proxy: {
+      '/api/analytics': {
+        target: 'http://127.0.0.1:8002',
+        rewrite: (path) => path.replace(/^\/api\/analytics/, ''),
+      },
+      '/api': {
+        target: 'http://127.0.0.1:8001',
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
 })
