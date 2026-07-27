@@ -1,30 +1,55 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { sendChat } from './api'
 import './App.css'
 
+type ChatRole = 'user' | 'assistant' | 'error'
+
+interface ChatMessage {
+  id: string
+  role: ChatRole
+  content: string
+}
+
+const MAX_INPUT_HEIGHT_PX = 160
 
 function App() {
   const [message, setMessage] = useState('')
-  const [reply, setReply] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | undefined>(undefined)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const threadRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Keep the latest turn in view as the thread grows.
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' })
+  }, [messages, loading])
+
+  // Auto-grow the composer with its content, capped so it can't swallow the screen.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT_PX)}px`
+  }, [message])
 
   async function submit() {
     const trimmed = message.trim()
     if (!trimmed || loading) return
 
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed }])
+    setMessage('')
     setLoading(true)
-    setError(null)
-    setReply(null)
 
     try {
       const res = await sendChat(trimmed, sessionId)
-      setReply(res.reply)
-      // Preserve the session across turns (see customer-ui README integration note).
       setSessionId(res.session_id)
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: res.reply }])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      const detail = err instanceof Error ? err.message : 'Something went wrong.'
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'error', content: detail }])
     } finally {
       setLoading(false)
     }
@@ -36,62 +61,145 @@ function App() {
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    // Ctrl/Cmd + Enter sends without leaving the keyboard.
+    // Ctrl/Cmd + Enter sends without leaving the keyboard; a bare Enter inserts a newline.
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault()
       void submit()
     }
   }
 
+  async function handleCopy(id: string, content: string) {
+    await navigator.clipboard.writeText(content)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500)
+  }
+
   return (
     <main className="chat">
-      <header className="chat-header">
-        <span className="chat-mark" aria-hidden="true" />
-        <div>
-          <h1>AI Chat</h1>
-          <p className="subtitle">Ask a question and get a reply from the assistant.</p>
-        </div>
-      </header>
+      <div className="chat-container">
+        <header className="chat-header">
+          <span className="chat-mark" aria-hidden="true" />
+          <div>
+            <h1>AI Chat</h1>
+            <p className="subtitle">Ask a question and get a reply from the assistant.</p>
+          </div>
+        </header>
+      </div>
 
-      <form className="chat-form" onSubmit={handleSubmit}>
-        <div className="chat-field">
-          <textarea
-            className="chat-input"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message…"
-            rows={4}
-            disabled={loading}
-            autoFocus
-          />
-          <div className="chat-actions">
-            <span className="chat-hint">Ctrl / Cmd + Enter to send</span>
+      <div className="chat-thread" ref={threadRef} aria-live="polite">
+        <div className="chat-container chat-thread-inner">
+          {messages.length === 0 && !loading && (
+            <div className="chat-empty-state">
+              <span className="chat-mark chat-empty-mark" aria-hidden="true" />
+              <p>Start a conversation below.</p>
+            </div>
+          )}
+
+          {messages.map((m) =>
+            m.role === 'error' ? (
+              <div key={m.id} className="chat-message chat-message--error">
+                <p className="chat-error" role="alert">
+                  {m.content}
+                </p>
+              </div>
+            ) : (
+              <div key={m.id} className={`chat-message chat-message--${m.role}`}>
+                {m.role === 'assistant' && (
+                  <span className="chat-avatar" aria-hidden="true">
+                    AI
+                  </span>
+                )}
+                <div className="chat-bubble-col">
+                  <div className="chat-bubble">
+                    <p>{m.content}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="chat-copy"
+                    onClick={() => void handleCopy(m.id, m.content)}
+                    aria-label={copiedId === m.id ? 'Copied' : 'Copy message'}
+                  >
+                    {copiedId === m.id ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path
+                          d="M20 6L9 17l-5-5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="2" />
+                        <path
+                          d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    )}
+                    <span className="chat-tooltip" aria-hidden="true">
+                      {copiedId === m.id ? 'Copied!' : 'Copy message'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            ),
+          )}
+
+          {loading && (
+            <div className="chat-message chat-message--assistant">
+              <span className="chat-avatar" aria-hidden="true">
+                AI
+              </span>
+              <div className="chat-bubble chat-typing" aria-label="Assistant is typing">
+                <span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="chat-container">
+        <form className="chat-form" onSubmit={handleSubmit}>
+          <div className="chat-field">
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message…"
+              rows={1}
+              disabled={loading}
+              autoFocus
+            />
             <button
               type="submit"
               className="chat-send"
               disabled={loading || !message.trim()}
+              aria-label={loading ? 'Sending' : 'Send message'}
             >
-              {loading ? 'Sending…' : 'Send'}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 19V5M12 5L5 12M12 5l7 7"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="chat-tooltip" aria-hidden="true">
+                {loading ? 'Sending…' : message.trim() ? 'Send message' : 'Message is empty'}
+              </span>
             </button>
           </div>
-        </div>
-      </form>
-
-      <section className="chat-output" aria-live="polite">
-        {error && <div className="chat-error" role="alert">{error}</div>}
-
-        {reply && (
-          <div className="chat-reply">
-            <span className="chat-reply-label">Reply</span>
-            <p>{reply}</p>
-          </div>
-        )}
-
-        {!error && !reply && !loading && (
-          <p className="chat-empty">Your reply will appear here.</p>
-        )}
-      </section>
+          <span className="chat-hint">Ctrl / Cmd + Enter to send</span>
+        </form>
+      </div>
     </main>
   )
 }

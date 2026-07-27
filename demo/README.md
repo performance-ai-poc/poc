@@ -89,7 +89,12 @@ against the orchestrator and MCP server logs for the same run.
   browsers exercise different agents rather than all taking the same route.
 - The UI submits on the Send button or Ctrl/Cmd+Enter; a bare Enter in the
   textarea just inserts a newline. The script clicks Send.
-- Selectors (`textarea.chat-input`, `button.chat-send`, `.chat-reply`) come from
-  `customer-ui/src/App.tsx`. If that markup changes, update them at the top of
-  `browser_demo.py`.
+- Selectors (`textarea.chat-input`, `button.chat-send`, `.chat-message`,
+  `.chat-typing`, `.chat-error`) come from `customer-ui/src/App.tsx`. The chat
+  is a scrolling thread, so the script waits for the message count to grow
+  *and* the typing indicator to disappear, then reads whichever message is
+  last in `.chat-thread` — the Send button itself doesn't reliably signal
+  "done" since the composer clears on submit and re-disables the button for
+  an unrelated reason (empty input). If that markup changes, update the
+  selectors at the top of `browser_demo.py`.
 - One browser failing is logged and does not stop the others.
