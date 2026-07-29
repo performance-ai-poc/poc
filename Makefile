@@ -10,6 +10,7 @@ include make/customer-ui.mk
 include make/dashboard-ui.mk
 include make/orchestrator.mk
 include make/mcp-server.mk
+include make/analytics-svc.mk
 include make/postgres.mk
 include make/port-forward.mk
 include make/otel.mk

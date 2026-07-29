@@ -132,7 +132,7 @@ analytics:
     logLevel: INFO
     # OpenObserve service installed by the observability chart. Override the
     # release prefix if that chart is installed under a different release name.
-    openobserveUrl: http://demo-observability-openobserve:5080
+    openobserveUrl: http://observability-openobserve:5080
     openobserveOrg: default
     openobserveStream: default
     # Read-only Basic auth header; local-only demo default (base64 of the

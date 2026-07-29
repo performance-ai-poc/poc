@@ -26,6 +26,7 @@ help:
 	@echo "  make rebuild-dashboard-ui"
 	@echo "  make rebuild-orchestrator"
 	@echo "  make rebuild-mcp"
+	@echo "  make rebuild-analytics"
 	@echo "  make restart-postgres"
 	@echo "  make rollout-postgres"
 	@echo "  make logs-postgres"
@@ -55,10 +56,10 @@ status:
 	@kubectl get services -n $(NAMESPACE)
 
 .PHONY: build-all
-build-all: build-customer-ui build-dashboard-ui build-orchestrator build-mcp
+build-all: build-customer-ui build-dashboard-ui build-orchestrator build-mcp build-analytics
 
 .PHONY: load-all
-load-all: load-customer-ui load-dashboard-ui load-orchestrator load-mcp
+load-all: load-customer-ui load-dashboard-ui load-orchestrator load-mcp load-analytics
 
 .PHONY: prepare-all
 prepare-all: build-all load-all
@@ -72,15 +73,17 @@ reset-stack:
 	-helm uninstall $(OBSERVABILITY_RELEASE) -n $(NAMESPACE) >/dev/null 2>&1 || true
 	-kubectl delete job,deploy,sts,svc,secret,pvc -n $(NAMESPACE) --all --ignore-not-found >/dev/null 2>&1 || true
 	-kubectl delete pod -n $(NAMESPACE) --all --force --grace-period=0 --ignore-not-found >/dev/null 2>&1 || true
-	-ids=$$(docker ps -aq --filter ancestor=customer-ui:$(TAG) --filter ancestor=dashboard-ui:$(TAG) --filter ancestor=orchestrator-svc:$(TAG) --filter ancestor=mcp-server:$(TAG)); \
+	-ids=$$(docker ps -aq --filter ancestor=customer-ui:$(TAG) --filter ancestor=dashboard-ui:$(TAG) --filter ancestor=orchestrator-svc:$(TAG) --filter ancestor=mcp-server:$(TAG) --filter ancestor=analytics-svc:$(TAG)); \
 		if [ -n "$$ids" ]; then docker rm -f $$ids >/dev/null 2>&1 || true; fi
-	-docker rmi -f customer-ui:$(TAG) dashboard-ui:$(TAG) orchestrator-svc:$(TAG) mcp-server:$(TAG) >/dev/null 2>&1 || true
+	-docker rmi -f customer-ui:$(TAG) dashboard-ui:$(TAG) orchestrator-svc:$(TAG) mcp-server:$(TAG) analytics-svc:$(TAG) >/dev/null 2>&1 || true
 	-docker builder prune -af >/dev/null 2>&1 || true
 	-minikube image rm customer-ui:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm dashboard-ui:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm orchestrator-svc:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm mcp-server:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm analytics-svc:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm docker.io/library/customer-ui:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm docker.io/library/dashboard-ui:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm docker.io/library/orchestrator-svc:$(TAG) >/dev/null 2>&1 || true
 	-minikube image rm docker.io/library/mcp-server:$(TAG) >/dev/null 2>&1 || true
+	-minikube image rm docker.io/library/analytics-svc:$(TAG) >/dev/null 2>&1 || true
