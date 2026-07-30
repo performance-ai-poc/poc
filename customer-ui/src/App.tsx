@@ -11,6 +11,15 @@ interface ChatMessage {
 }
 
 const MAX_INPUT_HEIGHT_PX = 160
+const EMPTY_REPLY_FALLBACK = 'I did not get a reply back from the assistant.'
+
+function makeMessageId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
 
 function App() {
   const [message, setMessage] = useState('')
@@ -39,17 +48,24 @@ function App() {
     const trimmed = message.trim()
     if (!trimmed || loading) return
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: trimmed }])
+    setMessages((prev) => [...prev, { id: makeMessageId(), role: 'user', content: trimmed }])
     setMessage('')
     setLoading(true)
 
     try {
       const res = await sendChat(trimmed, sessionId)
       setSessionId(res.session_id)
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: res.reply }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: makeMessageId(),
+          role: 'assistant',
+          content: res.reply.trim() || EMPTY_REPLY_FALLBACK,
+        },
+      ])
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'Something went wrong.'
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'error', content: detail }])
+      setMessages((prev) => [...prev, { id: makeMessageId(), role: 'error', content: detail }])
     } finally {
       setLoading(false)
     }
@@ -174,6 +190,12 @@ function App() {
                 <span className="dot" />
                 <span className="dot" />
               </div>
+            </div>
+          )}
+
+          {!loading && messages.length > 0 && (
+            <div className="chat-status" role="status" aria-live="polite">
+              Waiting for the next turn.
             </div>
           )}
         </div>

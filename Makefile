@@ -6,6 +6,7 @@ SHELL := /bin/bash
 include make/common.mk
 include make/minikube.mk
 include make/helm.mk
+include make/analytics.mk
 include make/customer-ui.mk
 include make/dashboard-ui.mk
 include make/orchestrator.mk

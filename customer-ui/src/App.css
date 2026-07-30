@@ -344,6 +344,13 @@
   border: 1px solid rgba(239, 68, 68, 0.35);
 }
 
+.chat-status {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* Composer */
 .chat-form {
   flex: none;

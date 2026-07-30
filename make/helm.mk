@@ -1,8 +1,19 @@
 HELM_IMAGE_VALUES := \
 	--set customerUi.image.tag=$(TAG) \
-	--set dashboardUi.image.tag=$(TAG) \
 	--set orchestrator.image.tag=$(TAG) \
 	--set mcpServer.image.tag=$(TAG)
+
+CUSTOMER_UI_INGRESS_ENABLED ?= true
+CUSTOMER_UI_INGRESS_CLASS_NAME ?= nginx
+CUSTOMER_UI_INGRESS_HOST ?= customer.local
+CUSTOMER_UI_INGRESS_PATH ?= /
+CUSTOMER_UI_INGRESS_PATH_TYPE ?= Prefix
+CUSTOMER_UI_INGRESS_TLS_ENABLED ?= false
+CUSTOMER_UI_INGRESS_TLS_SECRET_NAME ?=
+
+HELM_OBSERVABILITY_IMAGE_VALUES := \
+	--set dashboardUi.image.tag=$(TAG) \
+	--set analytics.image.tag=$(TAG)
 
 HELM_RUNTIME_VALUES := \
 	--set-string orchestrator.env.appEnv=$(APP_ENV) \
@@ -35,7 +46,8 @@ helm-template:
 		$(HELM_IMAGE_VALUES) \
 		$(HELM_RUNTIME_VALUES)
 	helm template $(OBSERVABILITY_RELEASE) $(OBSERVABILITY_CHART_DIR) \
-		--namespace $(NAMESPACE)
+		--namespace $(NAMESPACE) \
+		$(HELM_OBSERVABILITY_IMAGE_VALUES)
 
 .PHONY: deploy-app
 deploy-app: helm-lint
@@ -53,10 +65,11 @@ deploy-observability: helm-lint
 		--namespace $(NAMESPACE) \
 		--create-namespace \
 		--wait \
-		--timeout 5m
+		--timeout 5m \
+		$(HELM_OBSERVABILITY_IMAGE_VALUES)
 
 .PHONY: deploy
-deploy: deploy-observability deploy-app
+deploy: deploy-app deploy-observability
 
 .PHONY: uninstall-app
 uninstall-app:

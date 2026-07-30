@@ -6,7 +6,6 @@ Current template groups:
 
 - `customer-ui-*` - deployment and service for the customer-facing UI.
 - `customer-ui-ingress.yaml` - optional HTTP ingress for the customer UI.
-- `dashboard-ui-*` - deployment and service for the dashboard UI.
 - `orchestrator-*` - deployment and service for the FastAPI orchestrator.
 - `mcp-server-*` - deployment and service for the FastMCP server.
 - `postgres-*` - persistent PostgreSQL workload, Service, and Secret.

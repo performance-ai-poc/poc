@@ -2,37 +2,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-analytics
+  name: {{ include "observability.fullname" . }}-analytics
   labels:
     app.kubernetes.io/name: analytics
     app.kubernetes.io/instance: {{ .Release.Name }}
-
 spec:
   replicas: {{ .Values.analytics.replicaCount }}
-
   selector:
     matchLabels:
       app.kubernetes.io/name: analytics
       app.kubernetes.io/instance: {{ .Release.Name }}
-
   template:
     metadata:
       labels:
         app.kubernetes.io/name: analytics
         app.kubernetes.io/instance: {{ .Release.Name }}
-
     spec:
       containers:
         - name: analytics
-
           image: "{{ .Values.analytics.image.repository }}:{{ .Values.analytics.image.tag }}"
           imagePullPolicy: {{ .Values.analytics.image.pullPolicy }}
-
           ports:
             - name: http
               containerPort: {{ .Values.analytics.service.port }}
               protocol: TCP
-
           env:
             - name: APP_ENV
               value: {{ .Values.analytics.env.appEnv | quote }}
@@ -42,12 +35,8 @@ spec:
               value: {{ .Values.analytics.env.port | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.analytics.env.logLevel | quote }}
-
-            # Read-only query surface to the telemetry backend. The URL points
-            # at the OpenObserve service the observability chart installs;
-            # override it if that chart uses a different release name.
             - name: OPENOBSERVE_URL
-              value: {{ .Values.analytics.env.openobserveUrl | quote }}
+              value: {{ .Values.analytics.env.openobserveUrl | default (printf "http://%s-openobserve:%v" (include "observability.fullname" .) .Values.openObserve.service.port) | quote }}
             - name: OPENOBSERVE_ORG
               value: {{ .Values.analytics.env.openobserveOrg | quote }}
             - name: OPENOBSERVE_STREAM
@@ -55,9 +44,8 @@ spec:
             - name: OPENOBSERVE_AUTH
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-chat.fullname" . }}-analytics
+                  name: {{ include "observability.fullname" . }}-analytics
                   key: OPENOBSERVE_AUTH
-
             - name: LIVE_WINDOW_MINUTES
               value: {{ .Values.analytics.env.liveWindowMinutes | quote }}
             - name: BASELINE_WINDOW_MINUTES
@@ -66,12 +54,8 @@ spec:
               value: {{ .Values.analytics.env.collectorMemoryLimitMib | quote }}
             - name: CORS_ALLOWED_ORIGINS
               value: {{ .Values.analytics.env.corsAllowedOrigins | quote }}
-
           resources:
             {{- toYaml .Values.analytics.resources | nindent 12 }}
-
-          # /health has no backend dependency, so probes never flap just
-          # because OpenObserve is briefly unreachable.
           livenessProbe:
             httpGet:
               path: /health

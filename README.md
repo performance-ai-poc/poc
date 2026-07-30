@@ -120,7 +120,8 @@ make status
 ```
 
 `make dev` starts Minikube if needed, builds all service images, loads them
-into Minikube, deploys the Helm chart, and prints deployment status.
+into Minikube, deploys the application chart, deploys the observability chart,
+and prints deployment status.
 
 Useful per-service targets:
 
@@ -177,3 +178,15 @@ make helm-template
 - The MCP server only exposes a demo `add(a, b)` tool.
 - The UIs are still Vite scaffolds and do not call the orchestrator yet.
 - The Collector currently uses the `debug` exporter; configure a backend exporter in the Collector when one is selected.
+
+
+## Prompts to test
+
+- Can you look up my orders?
+- Show me the status of order 1001.
+- What carrier is handling order 1001?
+- Find documents about shipment escalation.
+- Search for notes on delivery delays.
+- Look up recent orders for customer 42.
+- What is the schema for the orders data?
+- Summarize the latest order issues.

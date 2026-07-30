@@ -66,3 +66,66 @@ openObserve:
     limits:
       cpu: "1"
       memory: 1Gi
+
+# Read-only drift/analytics API used by dashboard-ui.
+analytics:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: analytics-svc
+    tag: demo
+    pullPolicy: Never
+
+  service:
+    type: NodePort
+    port: 8002
+    nodePort: 30084
+
+  env:
+    appEnv: production
+    host: 0.0.0.0
+    port: "8002"
+    logLevel: INFO
+    # Empty uses the OpenObserve service installed by this chart.
+    openobserveUrl: ""
+    openobserveOrg: default
+    openobserveStream: default
+    # Empty derives Basic auth from openObserve.auth above.
+    openobserveAuth: ""
+    liveWindowMinutes: "15"
+    baselineWindowMinutes: "60"
+    collectorMemoryLimitMib: "512"
+    corsAllowedOrigins: "*"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 192Mi
+
+dashboardUi:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: dashboard-ui
+    tag: demo
+    pullPolicy: Never
+
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30082
+
+  ingress:
+    enabled: true
+    className: nginx
+    host: dashboard.local
+    path: /
+    pathType: Prefix
+    tls:
+      enabled: false
+      secretName: ""

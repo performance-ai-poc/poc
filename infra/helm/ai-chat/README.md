@@ -11,11 +11,13 @@ It currently deploys:
 - `customer-ui` as a NodePort service on port `30080`.
 - Optional Ingress for `customer-ui` on a configurable host.
 - `orchestrator-svc` as a NodePort service on port `30081`.
-- `dashboard-ui` as a NodePort service on port `30082`.
 - `mcp-server` as a ClusterIP service on port `8000`.
 - PostgreSQL 16 as a one-replica StatefulSet with persistent storage.
 - A post-install seed Job that creates the demo schema, inserts deterministic
   data, and creates the `mcp_readonly` SELECT-only role.
+
+The `dashboard-ui` and `analytics-svc` workloads are owned by the
+[`observability`](../observability/) chart.
 
 Default image tags, service types, ports, and orchestrator environment values
 are defined in `values.yaml`.
@@ -29,11 +31,12 @@ make deploy
 make uninstall
 ```
 
-For the full stack, install the observability release first:
+For the full stack, install the application release first, then the
+observability release:
 
 ```bash
-make deploy-observability
 make deploy-app
+make deploy-observability
 ```
 
 ## Customer UI Ingress

@@ -1,32 +1,41 @@
+{{- if .Values.dashboardUi.enabled | default true }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ai-chat.fullname" . }}-dashboard-ui
+  name: {{ include "observability.fullname" . }}-dashboard-ui
   labels:
     app.kubernetes.io/name: dashboard-ui
     app.kubernetes.io/instance: {{ .Release.Name }}
-
 spec:
   replicas: {{ .Values.dashboardUi.replicaCount }}
-
   selector:
     matchLabels:
       app.kubernetes.io/name: dashboard-ui
       app.kubernetes.io/instance: {{ .Release.Name }}
-
   template:
     metadata:
       labels:
         app.kubernetes.io/name: dashboard-ui
         app.kubernetes.io/instance: {{ .Release.Name }}
-
     spec:
       containers:
         - name: dashboard-ui
           image: "{{ .Values.dashboardUi.image.repository }}:{{ .Values.dashboardUi.image.tag }}"
           imagePullPolicy: {{ .Values.dashboardUi.image.pullPolicy }}
-
           ports:
             - name: http
               containerPort: 80
               protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+{{- end }}

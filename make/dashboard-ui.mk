@@ -1,6 +1,6 @@
 DASHBOARD_UI_DIR ?= ./dashboard-ui
 DASHBOARD_UI_IMAGE := dashboard-ui:$(TAG)
-DASHBOARD_UI_RESOURCE := $(RELEASE)-ai-chat-dashboard-ui
+DASHBOARD_UI_RESOURCE := $(OBSERVABILITY_RELEASE)-dashboard-ui
 
 .PHONY: build-dashboard-ui
 build-dashboard-ui:

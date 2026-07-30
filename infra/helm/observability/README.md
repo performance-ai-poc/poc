@@ -8,6 +8,8 @@ This chart owns:
 - Read-only Collector RBAC and Kubernetes metadata discovery.
 - Redaction, allowlisting, and capture-policy processing.
 - OpenObserve, its credentials, Service, and persistent storage.
+- `analytics-svc`, the read-only telemetry analytics API.
+- `dashboard-ui`, including an optional Nginx Ingress.
 
 Application charts do not depend on these Kubernetes object names. Instrumented
 pods export OTLP to the Collector on their node through `status.hostIP:4317`.
@@ -80,3 +82,7 @@ OpenObserve can be reached locally with:
 ```bash
 kubectl port-forward -n ai-chat service/observability-openobserve 5080:5080
 ```
+
+The dashboard can be reached through its NodePort `30082`, by port-forwarding
+`service/observability-dashboard-ui`, or through the optional `dashboard.local`
+Ingress when an ingress controller is installed.
