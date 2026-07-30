@@ -23,7 +23,9 @@ export interface TechnicalMetric {
 export interface ResourceMetric {
   id: string;
   label: string;
-  percent: number;
+  percent?: number | null;
+  value?: number | null;
+  unit?: string | null;
   band: Band;
   source: Source;
 }

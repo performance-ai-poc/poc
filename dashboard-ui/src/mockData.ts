@@ -25,7 +25,7 @@ export const mockDashboardData: DashboardData = {
     { id: "memory", label: "Memory", percent: 25, band: "low", source: "mock" },
     { id: "compute", label: "Compute", percent: 20, band: "low", source: "mock" },
     { id: "storage", label: "Storage", percent: 40, band: "medium", source: "mock" },
-    { id: "bandwidth", label: "Bandwidth", percent: 70, band: "high", source: "mock" },
+    { id: "bandwidth", label: "Bandwidth", value: 78.4, unit: "Mbps", band: "high", source: "mock" },
   ],
   correctiveActions: [
     { id: "micro-retrain", label: "Micro Retrain", enabled: true },

@@ -35,7 +35,18 @@ def _live_end() -> int:
     return FIXED_NOW
 
 
-def _stub_sources(monkeypatch, *, baseline_num, live_num, baseline_cat, live_cat, memory_bytes):
+def _stub_sources(
+    monkeypatch,
+    *,
+    baseline_num,
+    live_num,
+    baseline_cat,
+    live_cat,
+    memory_bytes,
+    cpu_util=None,
+    fs_util=None,
+    net_samples=None,
+):
     """Point every source read at canned data, split by window end time."""
 
     def fake_numeric(field, event, start, end, *, client=None):
@@ -47,9 +58,20 @@ def _stub_sources(monkeypatch, *, baseline_num, live_num, baseline_cat, live_cat
     def fake_metric(metric_name, start, end, *, client=None):
         return memory_bytes
 
+    def fake_metric_records(metric_name, start, end, *, client=None):
+        return [
+            {"_timestamp": 1_000_000, "value": 10_000_000.0},
+            {"_timestamp": 11_000_000, "value": 20_000_000.0},
+        ]
+
+    def fake_metric_samples(metric_name, start, end, *, client=None):
+        return net_samples or [(1, 0.0), (2, 0.0)]
+
     monkeypatch.setattr(source, "numeric_values", fake_numeric)
     monkeypatch.setattr(source, "categorical_values", fake_categorical)
     monkeypatch.setattr(source, "metric_value", fake_metric)
+    monkeypatch.setattr(source, "metric_records", fake_metric_records)
+    monkeypatch.setattr(source, "metric_samples", fake_metric_samples)
 
 
 # ---------------------------------------------------------------- health ---
@@ -157,6 +179,38 @@ def test_memory_tile_is_instrumented_from_the_collector_metric(frozen_now, monke
     assert mem.source == "instrumented"
     assert mem.percent == pytest.approx(50.0, abs=1.0)
     assert mem.band == "low"
+
+
+def test_compute_storage_and_bandwidth_tiles_are_instrumented_from_kubernetes_metrics(frozen_now, monkeypatch):
+    _stub_sources(
+        monkeypatch,
+        baseline_num=list(range(0, 100)),
+        live_num=list(range(0, 100)),
+        baseline_cat=["db_agent"],
+        live_cat=["db_agent"],
+        memory_bytes=256 * 1024 * 1024,
+        net_samples=[(1_000_000, 10_000_000.0), (11_000_000, 20_000_000.0)],
+    )
+    original_metric_value = source.metric_value
+
+    def fake_metric_value(metric_name, start, end, *, client=None):
+        if metric_name == "system.cpu.utilization":
+            return 0.41
+        if metric_name == "system.filesystem.utilization":
+            return 0.73
+        return original_metric_value(metric_name, start, end, client=client)
+
+    monkeypatch.setattr(source, "metric_value", fake_metric_value)
+    data = DashboardData.model_validate(client.get("/dashboard").json())
+    by_id = {r.id: r for r in data.resourceMetrics}
+
+    assert by_id["compute"].source == "instrumented"
+    assert by_id["compute"].percent == pytest.approx(41.0, abs=1.0)
+    assert by_id["storage"].source == "instrumented"
+    assert by_id["storage"].percent == pytest.approx(73.0, abs=1.0)
+    assert by_id["bandwidth"].source == "instrumented"
+    assert by_id["bandwidth"].value == pytest.approx(8.0, abs=1.0)
+    assert by_id["bandwidth"].unit == "Mbps"
 
 
 def test_all_technical_tiles_are_unavailable_slice_b(frozen_now, monkeypatch):

@@ -32,7 +32,7 @@ class DriftSignal:
     # None -> not backed yet; rendered unavailable with `reason`.
     kind: str | None
     # The log event / span name to filter on, and the field to read from it.
-    event: str | None = None
+    event: str | tuple[str, ...] | None = None
     field: str | None = None
     reason: str | None = None
 
@@ -44,8 +44,9 @@ DRIFT_SIGNALS: list[DriftSignal] = [
     DriftSignal(
         id="concept-drift",
         label="Concept Drift",
-        kind=None,
-        reason="needs ground-truth labels; not derivable from operational telemetry",
+        kind="categorical",
+        event=("agent.step_completed", "agent.step_failed"),
+        field="app.outcome",
     ),
     DriftSignal(
         id="covariate-shift",
@@ -57,8 +58,9 @@ DRIFT_SIGNALS: list[DriftSignal] = [
     DriftSignal(
         id="label-drift",
         label="Label Drift",
-        kind=None,
-        reason="needs ground-truth labels; not derivable from operational telemetry",
+        kind="categorical",
+        event="agent.step_failed",
+        field="app.failure.category",
     ),
     DriftSignal(
         id="feature-drift",
@@ -105,9 +107,11 @@ class ResourceSignal:
 
     id: str
     label: str
-    # Prometheus metric name exposed by the Collector's own telemetry, or None
-    # if we cannot back this tile yet.
+    # Metric name exposed by the Collector's own telemetry, or None if we
+    # cannot back this tile yet.
     metric: str | None = None
+    kind: str | None = None
+    unit: str | None = None
     reason: str | None = None
 
 
@@ -119,17 +123,21 @@ RESOURCE_SIGNALS: list[ResourceSignal] = [
     ResourceSignal(
         id="compute",
         label="Compute",
-        reason="CPU self-metric is a counter; a utilisation % needs rate sampling over an interval",
+        metric="system.cpu.utilization",
+        kind="latest_percent",
     ),
     ResourceSignal(
         id="storage",
         label="Storage",
-        reason="no storage-utilisation signal in this stack yet",
+        metric="system.filesystem.utilization",
+        kind="latest_percent",
     ),
     ResourceSignal(
         id="bandwidth",
         label="Bandwidth",
-        reason="no bandwidth signal in this stack yet",
+        metric="system.network.io",
+        kind="rate_per_sec",
+        unit="Mbps",
     ),
 ]
 

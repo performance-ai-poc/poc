@@ -51,13 +51,24 @@ function App() {
             {resourceMetrics.map((metric) => (
               <div key={metric.id} className="metric-card">
                 <div className="metric-card-label">{metric.label.toUpperCase()}</div>
-                <Gauge
-                  value={metric.percent}
-                  band={metric.band}
-                  displayValue={
-                    metric.source === "unavailable" ? "N/A" : `${metric.percent}%`
-                  }
-                />
+                {metric.percent != null ? (
+                  <Gauge
+                    value={metric.percent}
+                    band={metric.band}
+                    displayValue={
+                      metric.source === "unavailable" ? "N/A" : `${metric.percent}%`
+                    }
+                  />
+                ) : (
+                  <div className="resource-value">
+                    <div className={`band-pill band-${metric.band}`}>{metric.band}</div>
+                    <div className="resource-number">
+                      {metric.source === "unavailable"
+                        ? "N/A"
+                        : `${metric.value?.toFixed(1)} ${metric.unit ?? ""}`.trim()}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

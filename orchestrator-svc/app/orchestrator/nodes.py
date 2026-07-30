@@ -74,8 +74,10 @@ def advance_node(state):
         "graph.node": "advance",
         "step.sequence": step["sequence"],
         "duration_ms": result.get("duration_ms"),
+        "agent": step["agent"],
     }
     if success:
+        payload["app.outcome"] = "success"
         log_agent_step_completed(state["ctx"], payload)
     else:
         # Metadata-only: error_type is a short category/reason string (e.g.
@@ -92,6 +94,8 @@ def advance_node(state):
         # dispatching any remaining steps.
         state["aborted"] = True
         payload["error_type"] = error_type
+        payload["app.outcome"] = "failed"
+        payload["app.failure.category"] = error_type
         log_agent_step_failed(state["ctx"], payload)
 
     state["current_step"] += 1

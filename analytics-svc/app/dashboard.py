@@ -51,6 +51,10 @@ def _unavailable_drift(sig: metrics_map.DriftSignal) -> DriftMetric:
     return DriftMetric(id=sig.id, label=sig.label, value=0.0, band="low", source="unavailable")
 
 
+def _drift_result(value: float, band: str, sig: metrics_map.DriftSignal) -> DriftMetric:
+    return DriftMetric(id=sig.id, label=sig.label, value=float(value), band=band, source="inferred")
+
+
 def _drift_tile(
     sig: metrics_map.DriftSignal,
     baseline_win: tuple[int, int],
@@ -96,15 +100,58 @@ def _resource_tile(
         return ResourceMetric(id=sig.id, label=sig.label, percent=0.0, band="low", source="unavailable")
     try:
         raw = source.metric_value(sig.metric, *win, client=client)
+        records = source.metric_records(sig.metric, *win, client=client) if sig.kind == "rate_per_sec" else []
     except source.SourceUnavailable as exc:
         logger.info("resource tile %s unavailable: %s", sig.id, exc)
         raw = None
     if raw is None:
         return ResourceMetric(id=sig.id, label=sig.label, percent=0.0, band="low", source="unavailable")
-    # The only metric-backed resource tile today is Memory (RSS in bytes),
-    # expressed as a percent of the Collector's configured memory limit.
-    limit_bytes = settings.collector_memory_limit_mib * 1024 * 1024
-    percent = min(100.0, max(0.0, raw / limit_bytes * 100.0)) if limit_bytes else 0.0
+    if sig.id == "memory":
+        # Memory is RSS in bytes, expressed as a percent of the Collector's
+        # configured memory limit.
+        limit_bytes = settings.collector_memory_limit_mib * 1024 * 1024
+        percent = min(100.0, max(0.0, raw / limit_bytes * 100.0)) if limit_bytes else 0.0
+    elif sig.kind == "latest_percent":
+        percent = min(100.0, max(0.0, raw * 100.0))
+        return ResourceMetric(
+            id=sig.id,
+            label=sig.label,
+            percent=round(percent, 1),
+            band=_band_for_percent(percent),
+            source="instrumented",
+        )
+    elif sig.kind == "rate_per_sec":
+        # system.network.io is a cumulative byte counter. Compute the total
+        # byte delta across the live window and turn it into a throughput
+        # value, which is the exact representation emitted by the Collector
+        # rather than a fake utilization percent.
+        if not records:
+            return ResourceMetric(id=sig.id, label=sig.label, value=0.0, unit=sig.unit or "B/s", band="low", source="unavailable")
+        by_ts: dict[int, float] = {}
+        for hit in records:
+            try:
+                ts = int(hit.get("_timestamp"))
+                val = float(hit.get("value"))
+            except (TypeError, ValueError):
+                continue
+            by_ts[ts] = by_ts.get(ts, 0.0) + val
+        if len(by_ts) < 2:
+            return ResourceMetric(id=sig.id, label=sig.label, value=0.0, unit=sig.unit or "B/s", band="low", source="unavailable")
+        ordered = sorted(by_ts.items())
+        elapsed_s = max((ordered[-1][0] - ordered[0][0]) / 1_000_000.0, 1.0)
+        raw_rate_bps = max(0.0, ordered[-1][1] - ordered[0][1]) / elapsed_s
+        throughput_mbps = raw_rate_bps * 8.0 / 1_000_000.0
+        band = "low" if throughput_mbps < 50 else "medium" if throughput_mbps < 200 else "high"
+        return ResourceMetric(
+            id=sig.id,
+            label=sig.label,
+            value=round(throughput_mbps, 1),
+            unit=sig.unit or "Mbps",
+            band=band,
+            source="instrumented",
+        )
+    else:
+        percent = 0.0
     return ResourceMetric(
         id=sig.id,
         label=sig.label,

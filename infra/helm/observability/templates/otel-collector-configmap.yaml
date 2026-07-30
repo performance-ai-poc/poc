@@ -61,17 +61,18 @@ data:
         metric_groups: [pod, node]
 
       # Node/process host metrics from the host's /proc and /sys (mounted
-      # read-only under /hostfs). Only scrapers that read from those two paths;
-      # disk/filesystem are left out as they need broader mounts.
+      # read-only under /hostfs). Keep the scrapers to node-level signals that
+      # are stable in this minikube setup; the process scraper is noisy here
+      # because /hostfs/proc access is restricted for some kernel entries.
       hostmetrics:
         collection_interval: 20s
         root_path: /hostfs
         scrapers:
           cpu: {}
           memory: {}
+          filesystem: {}
           load: {}
           network: {}
-          process: {}
 
     processors:
       memory_limiter:

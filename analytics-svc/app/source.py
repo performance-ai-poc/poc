@@ -87,7 +87,7 @@ def _search(
 
 def numeric_values(
     field: str,
-    event: str,
+    event: str | tuple[str, ...],
     start_us: int,
     end_us: int,
     *,
@@ -95,9 +95,13 @@ def numeric_values(
 ) -> list[float]:
     """Every numeric value of `field` from records with the given `event`, over
     the window. Non-numeric or null values are skipped, not fatal."""
+    if isinstance(event, tuple):
+        event_clause = " OR ".join([f"event = '{e}'" for e in event])
+    else:
+        event_clause = f"event = '{event}'"
     sql = (
         f'SELECT "{field}" AS value FROM "{settings.openobserve_stream}" '
-        f"WHERE event = '{event}'"
+        f"WHERE {event_clause}"
     )
     out: list[float] = []
     for hit in _search(sql, start_us, end_us, client=client):
@@ -113,7 +117,7 @@ def numeric_values(
 
 def categorical_values(
     field: str,
-    event: str,
+    event: str | tuple[str, ...],
     start_us: int,
     end_us: int,
     *,
@@ -121,9 +125,13 @@ def categorical_values(
 ) -> list[str]:
     """Every value of a discrete `field` from records with the given `event`,
     over the window, the raw material for categorical (mix) drift."""
+    if isinstance(event, tuple):
+        event_clause = " OR ".join([f"event = '{e}'" for e in event])
+    else:
+        event_clause = f"event = '{event}'"
     sql = (
         f'SELECT "{field}" AS label FROM "{settings.openobserve_stream}" '
-        f"WHERE event = '{event}'"
+        f"WHERE {event_clause}"
     )
     out: list[str] = []
     for hit in _search(sql, start_us, end_us, client=client):
@@ -157,3 +165,38 @@ def metric_value(
         return float(raw) if raw is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def metric_samples(
+    metric_name: str,
+    start_us: int,
+    end_us: int,
+    *,
+    client: httpx.Client | None = None,
+) -> list[tuple[int, float]]:
+    """Return ordered (timestamp_us, value) samples for a metric stream."""
+    sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
+    hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
+    samples: list[tuple[int, float]] = []
+    for hit in hits:
+        raw = hit.get("value")
+        ts = hit.get("_timestamp")
+        try:
+            value = float(raw)
+            ts_us = int(ts)
+        except (TypeError, ValueError):
+            continue
+        samples.append((ts_us, value))
+    return samples
+
+
+def metric_records(
+    metric_name: str,
+    start_us: int,
+    end_us: int,
+    *,
+    client: httpx.Client | None = None,
+) -> list[dict]:
+    """Return raw metric hits for callers that need attributes as well as value."""
+    sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
+    return _search(sql, start_us, end_us, search_type="metrics", client=client)

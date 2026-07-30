@@ -41,7 +41,9 @@ class TechnicalMetric(BaseModel):
 class ResourceMetric(BaseModel):
     id: str
     label: str
-    percent: float
+    percent: float | None = None
+    value: float | None = None
+    unit: str | None = None
     band: Band
     source: Source
 
