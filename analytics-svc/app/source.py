@@ -152,8 +152,8 @@ def categorical_values(
         out.append(str(raw))
     return out
 
-# Observability fix update
-#####################################################################
+# Observability fix update for aggregate cpu util
+
 def cpu_busy_utilization(
     start_us: int,
     end_us: int,
@@ -207,7 +207,7 @@ def cpu_busy_utilization(
     busy = 1.0 - average_idle
 
     return min(1.0, max(0.0, busy))
-#####################################################################
+
 def metric_value(
     metric_name: str,
     start_us: int,
@@ -223,8 +223,8 @@ def metric_value(
     FROM the metric stream rather than filtering a metric_name column.
     """
 
-# Observability fix update
-#####################################################################
+# Observability fix update fixing the stream name
+
     # sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
     if metric_name == "system.cpu.utilization":
         return cpu_busy_utilization(
@@ -235,7 +235,7 @@ def metric_value(
     stream_name = _metric_stream_name(metric_name)
     sql = f'SELECT value FROM "{stream_name}" ORDER BY _timestamp DESC LIMIT 1'
 
-#####################################################################
+
 
 
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
@@ -257,14 +257,14 @@ def metric_samples(
 ) -> list[tuple[int, float]]:
     """Return ordered (timestamp_us, value) samples for a metric stream."""
 
-# Observability fix update
-#####################################################################
+# Observability fix update fixing the stream name
+
     # sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
 
     stream_name = _metric_stream_name(metric_name)
     sql = f'SELECT value, _timestamp FROM "{stream_name}" ORDER BY _timestamp ASC'
 
-#####################################################################
+
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     samples: list[tuple[int, float]] = []
     for hit in hits:
@@ -288,12 +288,12 @@ def metric_records(
 ) -> list[dict]:
     """Return raw metric hits for callers that need attributes as well as value."""
 
-# Observability fix update
-#####################################################################
+# Observability fix update fixing the stream name
+
     # sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
 
     stream_name = _metric_stream_name(metric_name)
     sql = f'SELECT value, _timestamp, * FROM "{stream_name}"'
 
-#####################################################################
+
     return _search(sql, start_us, end_us, search_type="metrics", client=client)
