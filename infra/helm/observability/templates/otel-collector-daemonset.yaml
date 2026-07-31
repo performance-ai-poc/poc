@@ -26,10 +26,10 @@ spec:
       serviceAccountName: {{ include "observability.fullname" . }}-otel-collector
       terminationGracePeriodSeconds: 30
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
-        fsGroup: 10001
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
       containers:
         - name: otel-collector
           image: "{{ .Values.otelCollector.image.repository }}:{{ .Values.otelCollector.image.tag }}"
@@ -99,7 +99,16 @@ spec:
             - name: varlogcontainers
               mountPath: /var/log/containers
               readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
             # Host /proc and /sys for the hostmetrics receiver (root_path /hostfs).
+            # Observability fix update for host fs
+           
+            - name: hostfs-root
+              mountPath: /hostfs
+              readOnly: true
+            
             - name: hostfs-proc
               mountPath: /hostfs/proc
               readOnly: true
@@ -122,6 +131,19 @@ spec:
           hostPath:
             path: /var/log/containers
             type: DirectoryOrCreate
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+            type: DirectoryOrCreate
+
+        # Observability fix update for host fs
+        
+        - name: hostfs-root
+          hostPath:
+            path: /
+            type: Directory
+        
+   
         - name: hostfs-proc
           hostPath:
             path: /proc

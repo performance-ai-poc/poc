@@ -24,6 +24,17 @@ class SourceUnavailable(Exception):
     """The telemetry backend could not be queried (down, slow, or malformed
     response). Caller renders the affected tiles as `unavailable`."""
 
+# Observability fix update
+#####################################################################
+def _metric_stream_name(metric_name: str) -> str:
+    """Convert an OTEL metric name to OpenObserve's metric stream name.
+
+    OpenObserve normalizes dots in OTEL metric names to underscores:
+    system.cpu.utilization -> system_cpu_utilization
+    """
+    return metric_name.replace(".", "_")
+#####################################################################
+
 
 def now_microseconds() -> int:
     return int(time.time() * 1_000_000)
@@ -100,12 +111,12 @@ def numeric_values(
     else:
         event_clause = f"event = '{event}'"
     sql = (
-        f'SELECT "{field}" AS value FROM "{settings.openobserve_stream}" '
+        f'SELECT "{_metric_stream_name(field)}" AS value FROM "{settings.openobserve_stream}" '
         f"WHERE {event_clause}"
     )
     out: list[float] = []
     for hit in _search(sql, start_us, end_us, client=client):
-        raw = hit.get("value", hit.get(field))
+        raw = hit.get("value", hit.get(_metric_stream_name(field)))
         if raw is None:
             continue
         try:
@@ -130,17 +141,72 @@ def categorical_values(
     else:
         event_clause = f"event = '{event}'"
     sql = (
-        f'SELECT "{field}" AS label FROM "{settings.openobserve_stream}" '
+        f'SELECT "{_metric_stream_name(field)}" AS label FROM "{settings.openobserve_stream}" '
         f"WHERE {event_clause}"
     )
     out: list[str] = []
     for hit in _search(sql, start_us, end_us, client=client):
-        raw = hit.get("label", hit.get(field))
+        raw = hit.get("label", hit.get(_metric_stream_name(field)))
         if raw is None:
             continue
         out.append(str(raw))
     return out
 
+# Observability fix update for aggregate cpu util
+
+def cpu_busy_utilization(
+    start_us: int,
+    end_us: int,
+    *,
+    client: httpx.Client | None = None,
+) -> float | None:
+    """Return total busy CPU as a fraction between 0 and 1.
+
+    system.cpu.utilization contains one row per CPU core and CPU state.
+    Total busy CPU is 1 minus the average idle utilization across all
+    cores at the newest collection timestamp.
+    """
+    stream_name = _metric_stream_name("system.cpu.utilization")
+
+    sql = (
+        f'SELECT _timestamp, cpu, state, value FROM "{stream_name}" '
+        "ORDER BY _timestamp DESC LIMIT 1000"
+    )
+
+    hits = _search(
+        sql,
+        start_us,
+        end_us,
+        search_type="metrics",
+        client=client,
+    )
+
+    latest_timestamp: int | None = None
+    latest_idle_values: list[float] = []
+
+    for hit in hits:
+        if str(hit.get("state", "")).lower() != "idle":
+            continue
+
+        try:
+            timestamp = int(hit["_timestamp"])
+            idle_value = float(hit["value"])
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        if latest_timestamp is None or timestamp > latest_timestamp:
+            latest_timestamp = timestamp
+            latest_idle_values = [idle_value]
+        elif timestamp == latest_timestamp:
+            latest_idle_values.append(idle_value)
+
+    if not latest_idle_values:
+        return None
+
+    average_idle = sum(latest_idle_values) / len(latest_idle_values)
+    busy = 1.0 - average_idle
+
+    return min(1.0, max(0.0, busy))
 
 def metric_value(
     metric_name: str,
@@ -156,7 +222,22 @@ def metric_value(
     stream name), with the sample in a `value` column, so we read straight
     FROM the metric stream rather than filtering a metric_name column.
     """
-    sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
+
+# Observability fix update fixing the stream name
+
+    # sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
+    if metric_name == "system.cpu.utilization":
+        return cpu_busy_utilization(
+            start_us,
+            end_us,
+            client=client,
+        )
+    stream_name = _metric_stream_name(metric_name)
+    sql = f'SELECT value FROM "{stream_name}" ORDER BY _timestamp DESC LIMIT 1'
+
+
+
+
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     if not hits:
         return None
@@ -175,7 +256,15 @@ def metric_samples(
     client: httpx.Client | None = None,
 ) -> list[tuple[int, float]]:
     """Return ordered (timestamp_us, value) samples for a metric stream."""
-    sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
+
+# Observability fix update fixing the stream name
+
+    # sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
+
+    stream_name = _metric_stream_name(metric_name)
+    sql = f'SELECT value, _timestamp FROM "{stream_name}" ORDER BY _timestamp ASC'
+
+
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     samples: list[tuple[int, float]] = []
     for hit in hits:
@@ -198,5 +287,13 @@ def metric_records(
     client: httpx.Client | None = None,
 ) -> list[dict]:
     """Return raw metric hits for callers that need attributes as well as value."""
-    sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
+
+# Observability fix update fixing the stream name
+
+    # sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
+
+    stream_name = _metric_stream_name(metric_name)
+    sql = f'SELECT * FROM "{stream_name}"'
+
+
     return _search(sql, start_us, end_us, search_type="metrics", client=client)
