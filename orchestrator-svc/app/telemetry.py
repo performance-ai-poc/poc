@@ -26,6 +26,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span, Status, StatusCode
+from app.config import settings
 
 from app.context import RequestContext
 
@@ -45,13 +46,14 @@ tool_count = meter.create_counter("app.tool.count", unit="{call}")
 
 
 def _endpoint() -> str | None:
-    return os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    return settings.otel_exporter_otlp_traces_endpoint or settings.otel_exporter_otlp_endpoint
 
 
 def _enabled(signal_name: str) -> bool:
-    if os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true":
+    if settings.otel_sdk_disabled:
         return False
-    return os.getenv(f"OTEL_{signal_name}_EXPORTER", "otlp").lower() != "none" and _endpoint() is not None
+    exporter = getattr(settings, f"otel_{signal_name.lower()}_exporter", "otlp")
+    return exporter.lower() != "none" and _endpoint() is not None
 
 
 def configure_telemetry(service_name: str) -> None:
@@ -62,10 +64,10 @@ def configure_telemetry(service_name: str) -> None:
 
     resource = Resource.create(
         {
-            SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", service_name),
+            SERVICE_NAME: settings.otel_service_name or service_name,
             "service.namespace": _SERVICE_NAMESPACE,
-            "service.version": os.getenv("OTEL_SERVICE_VERSION", "0.1.0"),
-            "deployment.environment.name": os.getenv("OTEL_DEPLOYMENT_ENVIRONMENT", "development"),
+            "service.version": settings.otel_service_version or "0.1.0",
+            "deployment.environment.name": settings.otel_deployment_environment or "development",
         }
     )
 

@@ -72,6 +72,20 @@ class Settings(BaseSettings):
     # is known, e.g. CORS_ALLOWED_ORIGINS=https://app.example.com.
     cors_allowed_origins: str = "*"
 
+    # OpenTelemetry export config. Read the same way as everything else here
+    # (env var or .env file) so telemetry.py doesn't need its own separate
+    # os.getenv reads — those silently miss values that only exist in .env,
+    # since pydantic-settings' env_file loading doesn't populate os.environ.
+    otel_service_name: str | None = None
+    otel_service_version: str = "0.1.0"
+    otel_deployment_environment: str = "development"
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_exporter_otlp_traces_endpoint: str | None = None
+    otel_sdk_disabled: bool = False
+    otel_traces_exporter: str = "otlp"
+    otel_metrics_exporter: str = "otlp"
+    otel_logs_exporter: str = "otlp"
+
     @property
     def cors_origins(self) -> list[str]:
         if self.cors_allowed_origins.strip() == "*":
