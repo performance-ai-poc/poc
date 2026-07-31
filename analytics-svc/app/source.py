@@ -111,12 +111,12 @@ def numeric_values(
     else:
         event_clause = f"event = '{event}'"
     sql = (
-        f'SELECT "{field}" AS value FROM "{settings.openobserve_stream}" '
+        f'SELECT "{_metric_stream_name(field)}" AS value FROM "{settings.openobserve_stream}" '
         f"WHERE {event_clause}"
     )
     out: list[float] = []
     for hit in _search(sql, start_us, end_us, client=client):
-        raw = hit.get("value", hit.get(field))
+        raw = hit.get("value", hit.get(_metric_stream_name(field)))
         if raw is None:
             continue
         try:
@@ -141,12 +141,12 @@ def categorical_values(
     else:
         event_clause = f"event = '{event}'"
     sql = (
-        f'SELECT "{field}" AS label FROM "{settings.openobserve_stream}" '
+        f'SELECT "{_metric_stream_name(field)}" AS label FROM "{settings.openobserve_stream}" '
         f"WHERE {event_clause}"
     )
     out: list[str] = []
     for hit in _search(sql, start_us, end_us, client=client):
-        raw = hit.get("label", hit.get(field))
+        raw = hit.get("label", hit.get(_metric_stream_name(field)))
         if raw is None:
             continue
         out.append(str(raw))
