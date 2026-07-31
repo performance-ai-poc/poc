@@ -293,7 +293,7 @@ def metric_records(
     # sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
 
     stream_name = _metric_stream_name(metric_name)
-    sql = f'SELECT value, _timestamp, * FROM "{stream_name}"'
+    sql = f'SELECT * FROM "{stream_name}"'
 
 
     return _search(sql, start_us, end_us, search_type="metrics", client=client)
