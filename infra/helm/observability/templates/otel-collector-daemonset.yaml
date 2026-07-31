@@ -100,6 +100,12 @@ spec:
               mountPath: /var/log/containers
               readOnly: true
             # Host /proc and /sys for the hostmetrics receiver (root_path /hostfs).
+            # Observability dix update
+            ########################################
+            - name: hostfs-root
+              mountPath: /hostfs
+              readOnly: true
+            ########################################
             - name: hostfs-proc
               mountPath: /hostfs/proc
               readOnly: true
@@ -122,6 +128,15 @@ spec:
           hostPath:
             path: /var/log/containers
             type: DirectoryOrCreate
+
+        # Observability dix update
+        ########################################
+        - name: hostfs-root
+          hostPath:
+            path: /
+            type: Directory
+        
+        ########################################
         - name: hostfs-proc
           hostPath:
             path: /proc

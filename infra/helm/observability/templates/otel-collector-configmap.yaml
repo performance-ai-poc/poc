@@ -68,12 +68,21 @@ data:
         collection_interval: 20s
         root_path: /hostfs
         scrapers:
+          
           cpu:
             metrics:
               system.cpu.utilization:
                 enabled: true
           memory: {}
-          filesystem: {}
+          filesystem:
+            include_virtual_filesystems: true
+            include_mount_points:
+              match_type: strict
+              mount_points:
+                - /
+            metrics:
+              system.filesystem.utilization:
+                enabled: true
           load: {}
           network: {}
 
