@@ -68,7 +68,10 @@ data:
         collection_interval: 20s
         root_path: /hostfs
         scrapers:
-          cpu: {}
+          cpu:
+            metrics:
+              system.cpu.utilization:
+                enabled: true
           memory: {}
           filesystem: {}
           load: {}

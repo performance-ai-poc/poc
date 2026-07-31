@@ -24,6 +24,17 @@ class SourceUnavailable(Exception):
     """The telemetry backend could not be queried (down, slow, or malformed
     response). Caller renders the affected tiles as `unavailable`."""
 
+# Observability fix update
+#####################################################################
+def _metric_stream_name(metric_name: str) -> str:
+    """Convert an OTEL metric name to OpenObserve's metric stream name.
+
+    OpenObserve normalizes dots in OTEL metric names to underscores:
+    system.cpu.utilization -> system_cpu_utilization
+    """
+    return metric_name.replace(".", "_")
+#####################################################################
+
 
 def now_microseconds() -> int:
     return int(time.time() * 1_000_000)
@@ -156,7 +167,16 @@ def metric_value(
     stream name), with the sample in a `value` column, so we read straight
     FROM the metric stream rather than filtering a metric_name column.
     """
-    sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
+
+# Observability fix update
+#####################################################################
+    # sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
+    stream_name = _metric_stream_name(metric_name)
+    sql = f'SELECT value FROM "{stream_name}" ORDER BY _timestamp DESC LIMIT 1'
+
+#####################################################################
+
+
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     if not hits:
         return None
@@ -175,7 +195,15 @@ def metric_samples(
     client: httpx.Client | None = None,
 ) -> list[tuple[int, float]]:
     """Return ordered (timestamp_us, value) samples for a metric stream."""
-    sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
+
+# Observability fix update
+#####################################################################
+    # sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
+
+    stream_name = _metric_stream_name(metric_name)
+    sql = f'SELECT value, _timestamp FROM "{stream_name}" ORDER BY _timestamp ASC'
+
+#####################################################################
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     samples: list[tuple[int, float]] = []
     for hit in hits:
@@ -198,5 +226,13 @@ def metric_records(
     client: httpx.Client | None = None,
 ) -> list[dict]:
     """Return raw metric hits for callers that need attributes as well as value."""
-    sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
+
+# Observability fix update
+#####################################################################
+    # sql = f'SELECT value, _timestamp, * FROM "{metric_name}"'
+
+    stream_name = _metric_stream_name(metric_name)
+    sql = f'SELECT value, _timestamp, * FROM "{stream_name}"'
+
+#####################################################################
     return _search(sql, start_us, end_us, search_type="metrics", client=client)
