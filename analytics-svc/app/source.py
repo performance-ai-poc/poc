@@ -28,12 +28,6 @@ class SourceUnavailable(Exception):
 def now_microseconds() -> int:
     return int(time.time() * 1_000_000)
 
-def _stream_name(metric_name: str) -> str:
-    """OpenObserve stores each metric as its own stream, with dots replaced
-    by underscores in the stream name (e.g. system.cpu.utilization ->
-    system_cpu_utilization)."""
-    return metric_name.replace(".", "_")
-
 
 def windows(
     now_us: int, live_minutes: int, baseline_minutes: int
@@ -162,7 +156,7 @@ def metric_value(
     stream name), with the sample in a `value` column, so we read straight
     FROM the metric stream rather than filtering a metric_name column.
     """
-    sql = f'SELECT value FROM "{_stream_name(metric_name)}" ORDER BY _timestamp DESC LIMIT 1'
+    sql = f'SELECT value FROM "{metric_name}" ORDER BY _timestamp DESC LIMIT 1'
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     if not hits:
         return None
@@ -181,7 +175,7 @@ def metric_samples(
     client: httpx.Client | None = None,
 ) -> list[tuple[int, float]]:
     """Return ordered (timestamp_us, value) samples for a metric stream."""
-    sql = f'SELECT value, _timestamp FROM "{_stream_name(metric_name)}" ORDER BY _timestamp ASC'
+    sql = f'SELECT value, _timestamp FROM "{metric_name}" ORDER BY _timestamp ASC'
     hits = _search(sql, start_us, end_us, search_type="metrics", client=client)
     samples: list[tuple[int, float]] = []
     for hit in hits:
@@ -204,5 +198,5 @@ def metric_records(
     client: httpx.Client | None = None,
 ) -> list[dict]:
     """Return raw metric hits for callers that need attributes as well as value."""
-    sql = f'SELECT * FROM "{_stream_name(metric_name)}"'
+    sql = f'SELECT * FROM "{metric_name}"'
     return _search(sql, start_us, end_us, search_type="metrics", client=client)
