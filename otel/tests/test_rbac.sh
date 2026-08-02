@@ -31,7 +31,10 @@ if ! helm template "${RELEASE}" "${CHART_DIR}" --namespace "${NAMESPACE}" > "${R
   exit 1
 fi
 
-CHECK_SCRIPT="$(mktemp --suffix=.py)"
+# No `--suffix=` here: that is a GNU coreutils extension and BSD/macOS mktemp
+# rejects it. The interpreter is invoked explicitly below, so the file needs no
+# .py extension anyway.
+CHECK_SCRIPT="$(mktemp)"
 trap 'rm -f "${RENDERED_FILE}" "${CHECK_SCRIPT}"' EXIT
 
 cat > "${CHECK_SCRIPT}" <<'PYEOF'

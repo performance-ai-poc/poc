@@ -4,6 +4,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COLLECTOR_HTTP="${COLLECTOR_HTTP:-http://localhost:4318}"
+COLLECTOR_HEALTH="${COLLECTOR_HEALTH:-http://localhost:13133}"
 OPENOBSERVE_URL="${OPENOBSERVE_URL:-http://localhost:5080}"
 OPENOBSERVE_ORG="${OPENOBSERVE_ORG:-default}"
 OPENOBSERVE_AUTH="${OPENOBSERVE_AUTH:-Basic YWRtaW5AZXhhbXBsZS10ZXN0LmludmFsaWQ6b3RlbC1wb2MtbG9jYWwtb25seQ==}"
@@ -13,6 +14,21 @@ cleanup() {
   "${REPO_ROOT}/otel/policy/apply.sh" metadata-only >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+# apply.sh returns as soon as `docker compose up -d` has *started* the
+# container, which is well before the OTLP receiver is listening. Probing in
+# that window gets connection-refused and the span is lost, so wait for the
+# health_check extension to report ready before sending anything.
+wait_for_collector() {
+  for _ in $(seq 1 30); do
+    if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "${COLLECTOR_HEALTH}")" = "200" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "FAIL: collector did not become ready within 30s after the policy switch."
+  exit 1
+}
 
 send_probe_span() {
   local trace_id="$1" span_id="$2" span_name="$3"
@@ -66,6 +82,7 @@ search_for_trace() {
 # --- 1. metadata-only: content attributes must NOT reach the backend -------
 echo "==> Applying metadata-only"
 "${REPO_ROOT}/otel/policy/apply.sh" metadata-only
+wait_for_collector
 
 TRACE_1=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
 SPAN_1=$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
@@ -86,6 +103,7 @@ echo "    OK: content attributes absent under metadata-only, as expected."
 # --- 2. content-approved: content attributes MUST reach the backend --------
 echo "==> Applying content-approved"
 "${REPO_ROOT}/otel/policy/apply.sh" content-approved
+wait_for_collector
 
 TRACE_2=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
 SPAN_2=$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
