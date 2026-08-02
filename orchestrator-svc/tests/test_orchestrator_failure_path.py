@@ -129,9 +129,13 @@ def test_failed_middle_step_aborts_before_third_step_via_http():
     assert len(step_failed) == 1
 
     reply = response.json()["reply"]
-    assert "Search documents for the relevant policy." not in reply
-    # Step 1's result should still be present — abort keeps completed work.
-    assert "Look up matching records in the database." in reply
+    # The agents strip the canned per-rule directive before working, so assert
+    # on what each step actually produced. Step 3 was the document search and
+    # never ran, so no document summary may appear; step 1's DB result must
+    # still be there, because abort keeps completed work.
+    assert "relevant document" not in reply
+    assert "matching record" in reply
+    assert "step 2 failed" in reply
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +217,9 @@ def test_completed_steps_before_the_failure_are_still_included_in_the_answer():
     assert final_state["status"] == "failed"
     # Step 1 (db_agent) succeeded before step 2 (api_agent) failed — its
     # result must still show up in the assembled answer, not be discarded.
-    assert "[DB Agent stub] Found matching records for" in final_state["answer"]
+    # The DB agent produces its own record summary; the stub text this used to
+    # look for is long gone.
+    assert "matching record" in final_state["answer"]
     assert "step 2 failed: simulated_tool_timeout" in final_state["answer"]
 
 
