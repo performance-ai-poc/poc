@@ -291,8 +291,17 @@ def test_concurrent_chat_requests_do_not_cross_contaminate():
     assert body_b["session_id"] == "session-B"
     assert body_a["run_id"] != body_b["run_id"]
     assert body_a["request_id"] != body_b["request_id"]
-    assert "Look up matching records in the database." in body_a["reply"]
-    assert "Check shipment status via the external API." in body_b["reply"]
+    # The agents strip the canned per-rule directive before they work
+    # (app/agents/db/routing.py::_PARENT_SQL_DIRECTIVE), so each reply carries
+    # that agent's own summary rather than the routing sentence. Session A
+    # asked about orders and must come back with the DB agent's record
+    # summary; session B asked about shipments and must come back with the API
+    # agent's shipment summary. Crucially, neither may carry the other's —
+    # that is what cross-contamination would look like here.
+    assert "matching record" in body_a["reply"]
+    assert "shipment status" not in body_a["reply"].lower()
+    assert "shipment status" in body_b["reply"].lower()
+    assert "matching record" not in body_b["reply"]
 
 
 # ---------------------------------------------------------------------------

@@ -150,19 +150,40 @@ def test_real_drift_moves_the_gauge_and_is_marked_inferred(frozen_now, monkeypat
         assert by_id[tid].band in {"medium", "high"}
 
 
-def test_label_and_concept_drift_are_always_unavailable(frozen_now, monkeypatch):
-    _stub_sources(
-        monkeypatch,
+def test_concept_and_label_drift_are_inferred_when_backed_and_unavailable_without_data(
+    frozen_now, monkeypatch
+):
+    """These two tiles used to be hardcoded ``unavailable`` ("needs ground-truth
+    labels"). They are now real categorical signals — concept-drift over
+    ``app.outcome`` and label-drift over ``app.failure.category`` (metrics_map.py)
+    — so the guarantee worth locking in is no longer "always unavailable" but
+    the honest-provenance rule: report ``inferred`` when the backing telemetry
+    is there, and fall back to ``unavailable`` when it is not, never a mocked
+    number.
+    """
+    backing = dict(
         baseline_num=list(range(0, 100)),
         live_num=list(range(0, 100)),
-        baseline_cat=["db_agent", "api_agent"],
-        live_cat=["db_agent", "api_agent"],
         memory_bytes=64 * 1024 * 1024,
     )
-    data = DashboardData.model_validate(client.get("/dashboard").json())
-    by_id = {d.id: d for d in data.driftMetrics}
-    assert by_id["concept-drift"].source == "unavailable"
-    assert by_id["label-drift"].source == "unavailable"
+
+    # Backed: identical baseline/live distributions, so inferred with no drift.
+    _stub_sources(
+        monkeypatch,
+        baseline_cat=["db_agent", "api_agent"],
+        live_cat=["db_agent", "api_agent"],
+        **backing,
+    )
+    by_id = {d.id: d for d in DashboardData.model_validate(client.get("/dashboard").json()).driftMetrics}
+    for tid in ("concept-drift", "label-drift"):
+        assert by_id[tid].source == "inferred"
+        assert by_id[tid].band == "low"
+
+    # Unbacked: no categorical telemetry at all -> honestly unavailable.
+    _stub_sources(monkeypatch, baseline_cat=[], live_cat=[], **backing)
+    by_id = {d.id: d for d in DashboardData.model_validate(client.get("/dashboard").json()).driftMetrics}
+    for tid in ("concept-drift", "label-drift"):
+        assert by_id[tid].source == "unavailable"
 
 
 def test_memory_tile_is_instrumented_from_the_collector_metric(frozen_now, monkeypatch):
