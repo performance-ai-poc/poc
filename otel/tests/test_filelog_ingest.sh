@@ -34,10 +34,33 @@ echo "==> Starting orchestrator-svc unmodified, stdout redirected to ${LOG_FILE}
 ) > "${LOG_FILE}" 2>&1 &
 ORCH_PID=$!
 
+# APP_ENV=development makes uvicorn run with autoreload, so the launcher above
+# is a reloader parent with a server child. Killing only ${ORCH_PID} leaves
+# that child holding :8001, and the NEXT run of this script then dies with
+# "Address already in use". Take the whole descendant tree down.
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "${pid}" 2>/dev/null); do
+    kill_tree "${child}"
+  done
+  kill "${pid}" 2>/dev/null || true
+}
+
+# The server child releases :8001 slightly after the launcher exits, so
+# `wait` alone is not enough: running this script twice back to back races
+# the next run's bind. Block until the port is genuinely free.
+wait_port_free() {
+  for _ in $(seq 1 20); do
+    curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${ORCH_PORT}/health" 2>/dev/null || return 0
+    sleep 0.5
+  done
+}
+
 cleanup() {
   echo "==> Stopping orchestrator-svc (pid ${ORCH_PID})"
-  kill "${ORCH_PID}" 2>/dev/null || true
+  kill_tree "${ORCH_PID}"
   wait "${ORCH_PID}" 2>/dev/null || true
+  wait_port_free
 }
 trap cleanup EXIT
 
@@ -83,7 +106,7 @@ for i in $(seq 1 20); do
     "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=logs" \
     -H "Authorization: ${OPENOBSERVE_AUTH}" \
     -H "Content-Type: application/json" \
-    -d "{\"query\":{\"sql\":\"SELECT event FROM default WHERE run_id='${RUN_ID}'\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":50}}")
+    -d "{\"query\":{\"sql\":\"SELECT run_id, event FROM default WHERE run_id='${RUN_ID}'\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":50}}")
 
   if echo "${search_response}" | grep -q "${RUN_ID}"; then
     found_events="${search_response}"

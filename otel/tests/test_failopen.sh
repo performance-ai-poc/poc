@@ -23,12 +23,30 @@ fi
 ) > "${LOG_FILE}" 2>&1 &
 ORCH_PID=$!
 
+# APP_ENV=development makes uvicorn run with autoreload, so the launcher above
+# is a reloader parent with a server child. Killing only ${ORCH_PID} leaves
+# that child holding :8001, and the NEXT run of this script then dies with
+# "Address already in use". Take the whole descendant tree down.
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "${pid}" 2>/dev/null); do
+    kill_tree "${child}"
+  done
+  kill "${pid}" 2>/dev/null || true
+}
+
 cleanup() {
   echo "==> Restoring otel-collector and openobserve (in case this exits mid-test)"
   docker compose -f "${COMPOSE_FILE}" start otel-collector openobserve >/dev/null 2>&1 || true
   echo "==> Stopping orchestrator-svc (pid ${ORCH_PID})"
-  kill "${ORCH_PID}" 2>/dev/null || true
+  kill_tree "${ORCH_PID}"
   wait "${ORCH_PID}" 2>/dev/null || true
+  # The server child releases the port slightly after the launcher exits, so
+  # `wait` alone races the next run's bind. Block until it is genuinely free.
+  for _ in $(seq 1 20); do
+    curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${ORCH_PORT}/health" 2>/dev/null || break
+    sleep 0.5
+  done
 }
 trap cleanup EXIT
 

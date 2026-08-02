@@ -7,7 +7,10 @@ CHART_DIR="${REPO_ROOT}/infra/helm/observability"
 RELEASE="${OBSERVABILITY_RELEASE:-observability}"
 NAMESPACE="${NAMESPACE:-default}"
 RENDERED_FILE="$(mktemp)"
-CHECK_SCRIPT="$(mktemp --suffix=.py)"
+# No `--suffix=` here: that is a GNU coreutils extension and BSD/macOS mktemp
+# rejects it. The interpreter is invoked explicitly below, so the file needs no
+# .py extension anyway.
+CHECK_SCRIPT="$(mktemp)"
 trap 'rm -f "${RENDERED_FILE}" "${CHECK_SCRIPT}"' EXIT
 
 PYTHON_BIN=""
