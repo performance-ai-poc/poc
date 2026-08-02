@@ -8,7 +8,18 @@ touching application code.
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# pydantic-settings reads .env into Settings below, but it does NOT publish
+# those values to os.environ. app.telemetry and the OpenTelemetry SDK read
+# their configuration straight from os.environ, so the OTEL_* block that
+# .env.example documents was silently ignored when set in .env: the SDK saw no
+# endpoint, stayed disabled, and the service exported no spans at all with no
+# error to show for it. Load .env into the process environment before anything
+# reads it. override=False keeps real environment variables authoritative,
+# which is what the Docker and Kubernetes paths rely on.
+load_dotenv(override=False)
 
 
 class Settings(BaseSettings):
