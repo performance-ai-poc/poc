@@ -8,6 +8,12 @@ metadata:
   labels:
     app.kubernetes.io/name: orchestrator
     app.kubernetes.io/instance: {{ .Release.Name }}
+    # Demo selectors (Multi-Agent Observability Guide): `-l tier=agent` shows
+    # the agent core, `-l app=agent-orchestrator` tails orchestrator logs.
+    # Deliberately NOT added to spec.selector.matchLabels below — that field is
+    # immutable and adding to it breaks `helm upgrade` on an existing release.
+    tier: agent
+    app: agent-orchestrator
 
 spec:
   replicas: {{ .Values.orchestrator.replicaCount }}
@@ -22,6 +28,8 @@ spec:
       labels:
         app.kubernetes.io/name: orchestrator
         app.kubernetes.io/instance: {{ .Release.Name }}
+        tier: agent
+        app: agent-orchestrator
 
     spec:
       containers:
