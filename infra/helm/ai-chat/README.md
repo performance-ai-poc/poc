@@ -39,6 +39,29 @@ make deploy-app
 make deploy-observability
 ```
 
+## Labels
+
+Every workload carries the standard `app.kubernetes.io/name` and
+`app.kubernetes.io/instance` pair; `instance` is the release name, so it selects
+everything this chart owns.
+
+The orchestrator and mcp-server additionally carry demo presentation labels,
+used by the Multi-Agent Observability Guide's commands:
+
+| Label | On | Purpose |
+| --- | --- | --- |
+| `tier: agent` | orchestrator, mcp-server | `-l tier=agent` shows the agent core |
+| `app: agent-orchestrator` | orchestrator | `-l app=agent-orchestrator` tails orchestrator logs |
+
+Both are set on `metadata.labels` and the pod template only, never on
+`spec.selector.matchLabels` — a Deployment's selector is immutable after
+creation, so adding to it would make `helm upgrade` fail on an existing release
+and force a delete/reinstall.
+
+Note that `app: agent-orchestrator` is a Kubernetes label and is unrelated to
+the OTel `service.name`, which this codebase emits as `backend-api`. That
+naming discrepancy is an open decision — see `orchestrator-svc/README.md`.
+
 ## Customer UI Ingress
 
 The customer UI already serves the built React app through Nginx inside the
