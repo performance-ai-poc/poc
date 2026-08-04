@@ -3,6 +3,7 @@
 | Script | Purpose |
 | --- | --- |
 | `browser_demo.py` | Drives the chat UI in parallel browsers to generate correlated telemetry. |
+| `open_tabs_demo.py` | Opens browser tabs against the chat UI to generate demo traffic. |
 | `verify_teardown.sh` | Proves the app survives removal of the observability plane. |
 
 ---
