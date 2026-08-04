@@ -17,6 +17,8 @@ help:
 	@echo "  make deploy"
 	@echo "  make deploy-app"
 	@echo "  make deploy-observability"
+	@echo "  make uninstall-observability"
+	@echo "  make verify-teardown"
 	@echo "  make status"
 	@echo "  make port-forward-start"
 	@echo "  make port-forward-stop"

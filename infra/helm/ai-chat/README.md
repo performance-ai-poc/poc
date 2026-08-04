@@ -94,7 +94,7 @@ different values for a shared environment:
 
 ```bash
 helm upgrade --install demo ./infra/helm/ai-chat \
-  --namespace ai-chat \
+  --namespace default \
   --create-namespace \
   --set postgresql.auth.appPassword='<app-password>' \
   --set postgresql.auth.readonlyPassword='<readonly-password>'
@@ -107,25 +107,25 @@ POC chart must also be safe inside PostgreSQL URI user-info fields.
 ### Verify the installation
 
 ```bash
-kubectl get pods,services,pvc,jobs -n ai-chat
-kubectl logs job/demo-ai-chat-mcp-seed -n ai-chat
-kubectl logs deployment/demo-ai-chat-mcp-server -n ai-chat
+kubectl get pods,services,pvc,jobs -n default
+kubectl logs job/demo-ai-chat-mcp-seed -n default
+kubectl logs deployment/demo-ai-chat-mcp-server -n default
 ```
 
 Confirm that the owner can write:
 
 ```bash
-kubectl exec -n ai-chat demo-ai-chat-postgres-0 -- \
+kubectl exec -n default demo-ai-chat-postgres-0 -- \
   psql -U app -d appdb -c "CREATE TABLE permission_check (id integer); DROP TABLE permission_check;"
 ```
 
 Confirm that the read-only user can read but cannot write:
 
 ```bash
-kubectl exec -n ai-chat demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
+kubectl exec -n default demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
   psql -h 127.0.0.1 -U mcp_readonly -d appdb -c "SELECT count(*) FROM customers;"
 
-kubectl exec -n ai-chat demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
+kubectl exec -n default demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
   psql -h 127.0.0.1 -U mcp_readonly -d appdb -c "DELETE FROM customers;"
 ```
 
@@ -137,8 +137,8 @@ Record a table count, delete only the PostgreSQL pod, then wait for the
 StatefulSet to recreate it:
 
 ```bash
-kubectl delete pod demo-ai-chat-postgres-0 -n ai-chat
-kubectl rollout status statefulset/demo-ai-chat-postgres -n ai-chat
+kubectl delete pod demo-ai-chat-postgres-0 -n default
+kubectl rollout status statefulset/demo-ai-chat-postgres -n default
 ```
 
 The replacement pod mounts the same claim, so the seeded tables and data remain.

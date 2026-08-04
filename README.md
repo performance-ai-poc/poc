@@ -47,6 +47,7 @@ Every non-generated folder has its own README with local notes:
 - [`agent2-svc/`](agent2-svc/README.md) - reserved for the second future agent service.
 - [`customer-ui/`](customer-ui/README.md) - customer-facing React/Vite app shell.
 - [`dashboard-ui/`](dashboard-ui/README.md) - dashboard React/Vite app shell.
+- [`demo/`](demo/README.md) - parallel browser demo and teardown verification.
 - [`docs/`](docs/README.md) - architecture images and future design notes.
 - [`infra/`](infra/README.md) - deployment infrastructure.
 - [`make/`](make/README.md) - included Makefile target groups.
@@ -146,6 +147,22 @@ The chart also assigns NodePorts by default:
 - Customer UI: `30080`
 - Orchestrator API: `30081`
 - Dashboard UI: `30082`
+
+## Teardown Demo
+
+The observability plane installs and uninstalls independently of the
+application. The demo makes that visible: remove observability, then show the
+multi-agent core still serving.
+
+```bash
+make deploy                   # app + observability, default namespace
+make uninstall-observability  # remove only the observability plane
+make verify-teardown          # prove the app is unaffected
+```
+
+`make verify-teardown` is read-only and exits non-zero if anything is off — see
+[`demo/`](demo/README.md) for the individual checks and how to point it at a
+non-standard deploy.
 
 ## Tests And Validation
 
