@@ -25,7 +25,7 @@ class SourceUnavailable(Exception):
     response). Caller renders the affected tiles as `unavailable`."""
 
 # Observability fix update
-#####################################################################
+
 def _metric_stream_name(metric_name: str) -> str:
     """Convert an OTEL metric name to OpenObserve's metric stream name.
 
@@ -33,7 +33,7 @@ def _metric_stream_name(metric_name: str) -> str:
     system.cpu.utilization -> system_cpu_utilization
     """
     return metric_name.replace(".", "_")
-#####################################################################
+
 
 
 def now_microseconds() -> int:
