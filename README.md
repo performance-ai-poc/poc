@@ -52,6 +52,7 @@ Every non-generated folder has its own README with local notes:
 - [`infra/`](infra/README.md) - deployment infrastructure.
 - [`make/`](make/README.md) - included Makefile target groups.
 - [`mcp-server/`](mcp-server/README.md) - baseline FastMCP service.
+- [`obs-ctl/`](obs-ctl/README.md) - Go TUI that installs/removes the observability plane.
 - [`orchestrator-svc/`](orchestrator-svc/README.md) - FastAPI API contract and logging details.
 - [`otel/`](otel/README.md) - OTLP Collector configuration and telemetry notes.
 
@@ -158,6 +159,14 @@ multi-agent core still serving.
 make deploy                   # app + observability, default namespace
 make uninstall-observability  # remove only the observability plane
 make verify-teardown          # prove the app is unaffected
+```
+
+The observability plane can equally be installed and removed with the
+[`obs-ctl`](obs-ctl/README.md) TUI, which is what the demo script uses — it runs
+the same Helm release in the same namespace, so the two are interchangeable:
+
+```bash
+cd obs-ctl && go run .        # 1 installs, 2 removes, o opens the dashboard
 ```
 
 `make verify-teardown` is read-only and exits non-zero if anything is off — see
