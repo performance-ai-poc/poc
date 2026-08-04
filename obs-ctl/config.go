@@ -16,7 +16,7 @@ const (
 	DashboardURL = "http://localhost:8082"
 
 	// Default license
-	LicenseKey = "0000000000000000"
+	LicenseKey = "0000"
 
 	// Browser
 	BrowserOpen = true

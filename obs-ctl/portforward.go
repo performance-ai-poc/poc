@@ -10,7 +10,14 @@ import (
 // -----------------------------------------------------------------------------
 
 func startDashboardPortForward() error {
-	cmd := exec.Command("make", "port-forward-dashboard-ui")
+	cmd := exec.Command(
+		"kubectl",
+		"port-forward",
+		"-n",
+		"default",
+		"service/observability-dashboard-ui",
+		"8082:80",
+	)
 
 	// Run from the repository root where the Makefile lives.
 	cmd.Dir = ".."
