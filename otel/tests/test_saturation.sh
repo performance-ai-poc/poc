@@ -28,9 +28,27 @@ fi
   "${PY}" -m app.main
 ) > "${LOG_FILE}" 2>&1 &
 ORCH_PID=$!
+# APP_ENV=development makes uvicorn run with autoreload, so the launcher above
+# is a reloader parent with a server child. Killing only ${ORCH_PID} leaves
+# that child holding :8001, and the NEXT run of this script then dies with
+# "Address already in use". Take the whole descendant tree down.
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "${pid}" 2>/dev/null); do
+    kill_tree "${child}"
+  done
+  kill "${pid}" 2>/dev/null || true
+}
+
 cleanup() {
-  kill "${ORCH_PID}" 2>/dev/null || true
+  kill_tree "${ORCH_PID}"
   wait "${ORCH_PID}" 2>/dev/null || true
+  # The server child releases the port slightly after the launcher exits, so
+  # `wait` alone races the next run's bind. Block until it is genuinely free.
+  for _ in $(seq 1 20); do
+    curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${ORCH_PORT}/health" 2>/dev/null || break
+    sleep 0.5
+  done
 }
 trap cleanup EXIT
 
@@ -68,14 +86,22 @@ flood_body() {
 }
 
 start_ts=$(date +%s)
+# NOTE: a bare `wait` here would also wait on the orchestrator-svc background
+# job started above, which never exits — that deadlocks the whole test. Wait
+# only on the flood curls, tracked by PID.
+flood_pids=()
 for i in $(seq 1 "${FLOOD_COUNT}"); do
-  curl -s -o /dev/null -X POST "${COLLECTOR_HTTP}/v1/traces" \
+  curl -s -o /dev/null --max-time 10 -X POST "${COLLECTOR_HTTP}/v1/traces" \
     -H "Content-Type: application/json" -d "$(flood_body)" &
+  flood_pids+=("$!")
   # Cap background job fan-out so this script itself doesn't become the
   # bottleneck / exhaust local ephemeral ports.
-  if (( i % 50 == 0 )); then wait; fi
+  if (( i % 50 == 0 )); then
+    wait "${flood_pids[@]}" 2>/dev/null
+    flood_pids=()
+  fi
 done
-wait
+[ ${#flood_pids[@]} -gt 0 ] && wait "${flood_pids[@]}" 2>/dev/null
 end_ts=$(date +%s)
 echo "    sent ${FLOOD_COUNT} spans in $((end_ts - start_ts))s"
 
@@ -98,11 +124,24 @@ echo "    OK: otel-collector container is still running after the flood."
 
 echo "==> Checking for a queryable drop/refusal signal"
 sleep 20  # let the prometheus self-scrape (15s interval) and export catch up
-metrics_response=$(curl -s -X POST \
-  "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=metrics" \
-  -H "Authorization: ${OPENOBSERVE_AUTH}" \
-  -H "Content-Type: application/json" \
-  -d "{\"query\":{\"sql\":\"SELECT * FROM default WHERE metric_name LIKE 'otelcol_%' LIMIT 50\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":50}}")
+# OpenObserve stores each metric as its OWN stream, named for the metric —
+# there is no `default` metrics stream with a `metric_name` column to filter
+# on (see analytics-svc/app/source.py::metric_value). So list the metric
+# streams and confirm the Collector's self-monitoring ones are present, then
+# read a real sample out of one of them.
+metrics_response=$(curl -s \
+  "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/streams?type=metrics" \
+  -H "Authorization: ${OPENOBSERVE_AUTH}")
+
+if echo "${metrics_response}" | grep -q "otelcol_"; then
+  metrics_response=$(curl -s -X POST \
+    "${OPENOBSERVE_URL}/api/${OPENOBSERVE_ORG}/_search?type=metrics" \
+    -H "Authorization: ${OPENOBSERVE_AUTH}" \
+    -H "Content-Type: application/json" \
+    -d "{\"query\":{\"sql\":\"SELECT value FROM \\\"otelcol_receiver_accepted_spans\\\" ORDER BY _timestamp DESC\",\"start_time\":$(( $(date +%s)000000 - 3600000000 )),\"end_time\":$(( $(date +%s)000000 + 3600000000 )),\"size\":1}}")
+  echo "    otelcol_receiver_accepted_spans latest sample: ${metrics_response}"
+  metrics_response="otelcol_ ${metrics_response}"
+fi
 
 if echo "${metrics_response}" | grep -q "otelcol_"; then
   echo "    OK: otelcol_* self-monitoring metrics are queryable in OpenObserve."

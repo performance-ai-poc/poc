@@ -290,9 +290,11 @@ def test_substring_match_inside_unrelated_word_is_no_longer_a_false_positive():
     message matches no rule at all, so it takes the FALLBACK path — still
     one step, still db_agent (FALLBACK_AGENT happens to also be db_agent),
     but via the fallback branch rather than a genuine (false) rule match.
-    The reply text distinguishes the two: a real rule-1 match always reads
-    "...Look up matching records in the database.", while the fallback
-    embeds the raw message itself.
+    The step plan distinguishes the two: a matched rule builds
+    "<canned sentence> Original request: <message>", while the fallback
+    passes the raw message through untouched. (The reply cannot show this —
+    the agents strip the canned directive before working, so it never
+    reaches the reply on either path.)
     """
     message = "There's a lot of disorder in my closet, can you help me organize it?"
     response, lines = _post_chat_capturing_logs(message)
@@ -306,9 +308,13 @@ def test_substring_match_inside_unrelated_word_is_no_longer_a_false_positive():
     assert len(steps) == 1
     assert steps[0]["agent"] == "db_agent"
 
-    reply = response.json()["reply"]
-    assert "Look up matching records in the database." not in reply
-    assert "disorder" in reply.lower()  # fallback echoes the raw message
+    # Fallback, not a rule match: the instruction is the raw message verbatim,
+    # with no canned rule-1 sentence prepended.
+    plan = build_step_plan(message)
+    assert len(plan) == 1
+    assert plan[0]["agent"] == "db_agent"
+    assert plan[0]["instruction"] == message
+    assert "Look up matching records in the database." not in plan[0]["instruction"]
 
 
 def test_tracking_no_longer_matches_inside_backtracking():
@@ -325,9 +331,12 @@ def test_tracking_no_longer_matches_inside_backtracking():
 
     steps = _step_started_events(lines)
     assert len(steps) == 1
-    reply = response.json()["reply"]
-    assert "Check shipment status via the external API." not in reply
-    assert "backtracking" in reply.lower()
+    # Fallback, not a rule match: the instruction is the raw message verbatim,
+    # with no canned api_agent sentence prepended.
+    plan = build_step_plan(message)
+    assert len(plan) == 1
+    assert plan[0]["instruction"] == message
+    assert "Check shipment status via the external API." not in plan[0]["instruction"]
 
 
 def test_document_no_longer_matches_inside_documentation_or_undocumented():
@@ -381,20 +390,31 @@ def test_matched_rule_instruction_includes_both_canned_text_and_raw_message():
     assert message in instruction
 
 
-def test_matched_rule_reply_contains_original_request_details_end_to_end():
-    """End-to-end version of the test above: confirms the specifics survive
-    all the way into the stub agent's summary/reply, while still never
+def test_matched_rule_request_details_reach_the_agent_and_never_the_logs():
+    """End-to-end version of the test above: confirms the specifics of the
+    request reach the agent that has to act on them, while still never
     appearing in logs (metadata-only logging is about logs, not the reply
     payload — see test_valid_chat_message_does_not_leak_into_logs in
     test_api.py for that distinction).
+
+    This used to assert the specifics reached the *reply*, which was true of
+    the old stub agent that echoed its instruction back. The real DB agent
+    strips the canned directive (app/agents/db/routing.py) and answers with
+    its own summary, so the instruction — not the reply — is where the
+    specifics have to survive, and it is where they are actually consumed.
     """
     message = "Get all orders placed by customer 42 in the last 7 days"
     response, lines = _post_chat_capturing_logs(message)
 
     assert response.status_code == 200
-    reply = response.json()["reply"]
-    assert "Look up matching records in the database." in reply
-    assert message in reply
+
+    # The specifics reach the agent, carried on the instruction.
+    instruction = build_step_plan(message)[0]["instruction"]
+    assert "Look up matching records in the database." in instruction
+    assert message in instruction
+
+    # And the request genuinely routed down the DB path end to end.
+    assert "matching record" in response.json()["reply"]
 
     raw_log_text = json.dumps(lines)
     assert message.lower() not in raw_log_text.lower()
@@ -458,8 +478,11 @@ def test_plural_only_shipment_form_still_matches_api_agent_rule():
     assert len(steps) == 1
     assert steps[0]["agent"] == "api_agent"
 
-    reply = response.json()["reply"]
-    assert "Check shipment status via the external API." in reply
+    # The routing decision is visible on the plan (the agent strips the canned
+    # directive before working); the outcome is visible as the API agent's own
+    # shipment summary in the reply.
+    assert "Check shipment status via the external API." in build_step_plan(message)[0]["instruction"]
+    assert "shipment status" in response.json()["reply"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +509,9 @@ def test_two_rules_matching_the_same_agent_produce_two_independent_steps():
     assert [s["step.sequence"] for s in steps] == [1, 2]
 
     # No key collision: both steps' distinct summaries show up in the
-    # assembled answer, not just one overwriting the other.
+    # assembled answer, not just one overwriting the other. The agents strip
+    # the canned directives, so the two results are told apart by what each
+    # step actually produced — a record lookup and a document search.
     reply = response.json()["reply"]
-    assert "Look up matching records in the database." in reply
-    assert "Search documents for the relevant policy." in reply
+    assert "matching record" in reply
+    assert "relevant document" in reply

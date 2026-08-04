@@ -33,7 +33,7 @@ fi
 # Confirm the file's own captureMode agrees with the requested mode (catches
 # a copy/paste or rename mistake before it gets rendered into the Collector's
 # environment).
-file_mode=$(grep -E '^captureMode:' "${POLICY_FILE}" | sed -E 's/^captureMode:\s*//' | tr -d '\r')
+file_mode=$(grep -E '^captureMode:' "${POLICY_FILE}" | sed -E 's/^captureMode:[[:space:]]*//' | tr -d '\r')
 if [ "${file_mode}" != "${MODE}" ]; then
   echo "FAIL: ${POLICY_FILE} declares captureMode: ${file_mode}, expected ${MODE}."
   exit 1
