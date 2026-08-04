@@ -182,6 +182,20 @@ demo run.
 
 ### Selectors
 
-Both charts stamp `app.kubernetes.io/instance=<release>` on every pod template,
-so the release name alone selects everything a chart owns. There is no `tier` or
-`app` label on these workloads — selectors like `-l tier=agent` match nothing.
+The script selects on `app.kubernetes.io/instance=<release>`, which both charts
+stamp on every pod template, so the release name alone selects everything a
+chart owns. That is the right scope for a teardown check: it asks "did this
+Helm release leave anything behind", which is a question about ownership.
+
+The demo guide's own commands select on `tier=agent` and `app=agent-orchestrator`
+instead. Those labels exist on the orchestrator and mcp-server pods:
+
+```bash
+kubectl get pods -n default -l tier=agent -o wide
+kubectl logs -n default -l app=agent-orchestrator --tail=50 -f
+```
+
+They are presentation labels for the demo — a stable, readable way to point at
+"the agent core" — and they are set on `metadata.labels` and the pod template
+only. They are deliberately **not** in `spec.selector.matchLabels`: that field is
+immutable, so adding to it would break `helm upgrade` on any existing release.

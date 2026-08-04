@@ -5,6 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/name: mcp-server
     app.kubernetes.io/instance: {{ .Release.Name }}
+    # Part of the agent core for the demo's `-l tier=agent` selector: this is
+    # the tool plane the agents call. Not added to spec.selector.matchLabels
+    # below — that field is immutable.
+    tier: agent
 
 spec:
   replicas: {{ .Values.mcpServer.replicaCount }}
@@ -19,6 +23,7 @@ spec:
       labels:
         app.kubernetes.io/name: mcp-server
         app.kubernetes.io/instance: {{ .Release.Name }}
+        tier: agent
 
     spec:
       containers:
