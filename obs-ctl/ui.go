@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -55,6 +56,7 @@ type model struct {
 	spinner   spinner.Model
 	statusMsg string
 	dashURL   string
+	success   bool
 }
 
 // -----------------------------------------------------------------------------
@@ -139,15 +141,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case installDoneMsg:
+		m.success = true
 		m.mode = modeComplete
 		m.statusMsg = "Observability Plane installed successfully in default namespace!"
+
+		if err := startDashboardPortForward(); err != nil {
+			m.success = false
+			m.statusMsg = "Installed successfully, but failed to start dashboard port-forward:\n" + err.Error()
+			return m, nil
+		}
+
+		time.Sleep(2 * time.Second)
+
 		openDashboard(m.dashURL)
+
 		return m, nil
 
 	case removeDoneMsg:
+		m.success = true
 		m.mode = modeComplete
 		m.statusMsg = "Observability Plane removed successfully from default namespace!"
 		return m, nil
+
+	case installFailedMsg:
+		m.success = false
+		m.mode = modeComplete
+		m.statusMsg = msg.Err
+		return m, nil
+
+	case removeFailedMsg:
+		m.success = false
+		m.mode = modeComplete
+		m.statusMsg = msg.Err
+		return m, nil
+
 	}
 
 	var cmd tea.Cmd
@@ -207,13 +234,28 @@ func (m model) View() string {
 
 	case modeComplete:
 
+		style := infoStyle
+		if !m.success {
+			style = warnStyle
+		}
+
+		if m.success {
+			return boxStyle.Render(
+				fmt.Sprintf(
+					"%s\n\nDashboard Endpoint: %s\n\nPress 'q' to exit.",
+					style.Render(m.statusMsg),
+					m.dashURL,
+				),
+			)
+		}
+
 		return boxStyle.Render(
 			fmt.Sprintf(
-				"%s\n\nDashboard Endpoint: %s\n\nPress 'q' to exit.",
-				infoStyle.Render(m.statusMsg),
-				m.dashURL,
+				"%s\n\nPress 'q' to exit.",
+				style.Render(m.statusMsg),
 			),
 		)
+
 	}
 
 	return ""
