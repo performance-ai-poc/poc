@@ -81,3 +81,16 @@ uninstall-observability:
 
 .PHONY: uninstall
 uninstall: uninstall-app uninstall-observability
+
+# Read-only check for the teardown demo: confirms the observability plane is
+# gone and the application kept serving. Run after uninstall-observability.
+#
+# ORCHESTRATOR_LOCAL_PORT is deliberately NOT forwarded here. That variable is
+# the *dev* port-forward port (8001, make/port-forward.mk); the script picks its
+# own free port so it never races a port-forward you already have running.
+.PHONY: verify-teardown
+verify-teardown:
+	@NAMESPACE=$(NAMESPACE) \
+		RELEASE=$(RELEASE) \
+		OBSERVABILITY_RELEASE=$(OBSERVABILITY_RELEASE) \
+		./demo/verify_teardown.sh
