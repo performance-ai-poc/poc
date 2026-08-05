@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -44,7 +43,6 @@ const (
 	modeInstalling
 	modeRemoving
 	modeComplete
-	modeInstalled
 )
 
 // -----------------------------------------------------------------------------
@@ -140,28 +138,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				)
 			}
 
-		case "o":
-			if m.mode == modeInstalled {
-
-				if err := startDashboardPortForward(); err != nil {
-					m.success = false
-					m.mode = modeComplete
-					m.statusMsg = "Failed to start dashboard port-forward:\n" + err.Error()
-					return m, nil
-				}
-
-				time.Sleep(3 * time.Second)
-
-				openDashboard(m.dashURL)
-
-				return m, tea.Quit
-			}
 		}
 
 	case installDoneMsg:
 		m.success = true
-		m.mode = modeInstalled
+		m.mode = modeComplete
 		m.statusMsg = "Observability Plane installed successfully in default namespace!"
+
+		go openDashboard(m.dashURL)
+
 		return m, nil
 
 	case removeDoneMsg:
@@ -260,16 +245,6 @@ func (m model) View() string {
 			fmt.Sprintf(
 				"%s\n\nPress 'q' to exit.",
 				style.Render(m.statusMsg),
-			),
-		)
-
-	case modeInstalled:
-
-		return boxStyle.Render(
-			fmt.Sprintf(
-				"%s\n\nDashboard Endpoint: %s\n\nPress 'o' to launch dashboard.\nPress 'q' to exit.",
-				infoStyle.Render(m.statusMsg),
-				m.dashURL,
 			),
 		)
 
