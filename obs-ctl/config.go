@@ -13,7 +13,7 @@ const (
 	ChartPath = "../infra/helm/observability"
 
 	// Dashboard
-	DashboardURL = "http://localhost:8082"
+	DashboardURL = "http://dashboard.local"
 
 	// Default license
 	LicenseKey = "0000"
