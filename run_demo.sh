@@ -8,6 +8,7 @@ echo "========================================"
 
 minikube delete
 minikube start
+minikube addons enable ingress
 
 echo
 echo "========================================"
@@ -48,6 +49,21 @@ echo " Current Pods"
 echo "========================================"
 
 kubectl get pods -n default
+
+echo
+echo "========================================"
+echo " Demo Setup Complete"
+echo "========================================"
+echo
+echo "Before launching obs-ctl:"
+echo "1. In a new terminal run:"
+echo "     minikube tunnel"
+echo
+echo "2. Ensure /etc/hosts contains:"
+echo "     127.0.0.1 dashboard.local"
+echo "     127.0.0.1 customer.local"
+echo
+read -p "Press Enter after the tunnel is running..."
 
 echo
 echo "========================================"
