@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       '/api/analytics': {
         target: 'http://127.0.0.1:8002',
+        ws: true, // proxy the real-time dashboard WebSocket in `vite dev` too
         rewrite: (path) => path.replace(/^\/api\/analytics/, ''),
       },
       '/api': {
