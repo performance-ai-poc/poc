@@ -1,5 +1,10 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+# Pin the WebSocket library to a version compatible with uvicorn 0.34.0's
+# websockets protocol implementation. Left unpinned, uvicorn[standard] pulls the
+# latest websockets (17.x), whose removed legacy API makes uvicorn reject the WS
+# handshake with HTTP 403. 12.0 works with uvicorn's implementation.
+websockets==12.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 python-dotenv==1.0.1

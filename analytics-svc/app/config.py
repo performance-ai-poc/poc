@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     # in the collector config / Helm values (512 MiB there).
     collector_memory_limit_mib: int = 512
 
+    # Real-time dashboard push. A background task recomputes the whole dashboard
+    # every `dashboard_refresh_seconds` into an in-memory cache; each connected
+    # WebSocket client is pushed the latest snapshot every `ws_push_seconds`.
+    # One compute serves every client, so the push rate is decoupled from the
+    # (slower) OpenObserve query time.
+    dashboard_refresh_seconds: float = 2.0
+    ws_push_seconds: float = 1.0
+
     # Comma-separated allowed CORS origins, or "*". The dashboard is served from
     # its own nginx origin and proxies here, so "*" is the dev-friendly default.
     cors_allowed_origins: str = "*"
