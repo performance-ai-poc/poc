@@ -98,3 +98,48 @@ against the orchestrator and MCP server logs for the same run.
   an unrelated reason (empty input). If that markup changes, update the
   selectors at the top of `browser_demo.py`.
 - One browser failing is logged and does not stop the others.
+
+## Many tabs in one window (`open_tabs_demo.py`)
+
+`open_tabs_demo.py` is a variant that opens a **single** Chromium window with N
+tabs (default 15) instead of separate tiled windows. Each tab loads the chat UI
+and sends one **unique** request, producing a burst of correlated `agent.*`
+telemetry that's handy for showing the dashboard fill up during a live demo. It
+reuses the same selectors and reply-wait logic as `browser_demo.py` and is
+self-contained (it imports no project code).
+
+### Setup
+
+```bash
+pip install playwright
+playwright install chromium
+```
+
+### Run
+
+```bash
+python demo/open_tabs_demo.py                       # 15 tabs, http://customer.local
+python demo/open_tabs_demo.py --tabs 12
+python demo/open_tabs_demo.py --stagger 0.6         # tighter burst on the dashboard
+python demo/open_tabs_demo.py --url http://localhost:8080   # port-forwarded customer-ui
+python demo/open_tabs_demo.py --headless            # no visible windows
+```
+
+The client UI must be reachable at `--url`. With the Helm stack plus
+`minikube tunnel` running, that's `http://customer.local`; otherwise
+port-forward the `customer-ui` service to `:8080` and pass
+`--url http://localhost:8080`.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--url` | `http://customer.local` | Chat UI base URL |
+| `--tabs` | `15` | Number of tabs / unique requests |
+| `--stagger` | `1.5` | Seconds between each tab's send, to spread LLM load |
+| `--timeout` | `120000` | Per-step timeout (ms) |
+| `--hold` | `10` | Seconds to keep the window open after all replies |
+| `--headless` | off | Run without visible windows |
+
+Tabs open lazily and staggered so a spike of simultaneous headed tabs can't
+crash the browser, and each tab's failure is isolated and logged rather than
+sinking the run. The LLM endpoint is slow and there's a single orchestrator
+replica, so raise `--stagger` or `--timeout` if requests time out under load.
