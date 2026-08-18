@@ -18,7 +18,7 @@ pods export OTLP to the Collector on their node through `status.hostIP:4317`.
 
 ```bash
 helm upgrade --install observability ./infra/helm/observability \
-  --namespace ai-chat \
+  --namespace default \
   --create-namespace \
   --wait \
   --timeout 5m
@@ -28,7 +28,7 @@ Install or upgrade the application independently:
 
 ```bash
 helm upgrade --install demo ./infra/helm/ai-chat \
-  --namespace ai-chat \
+  --namespace default \
   --create-namespace
 ```
 
@@ -38,7 +38,7 @@ Metadata-only is the safe default:
 
 ```bash
 helm upgrade observability ./infra/helm/observability \
-  --namespace ai-chat \
+  --namespace default \
   --reuse-values \
   --set-string otelCollector.captureMode=metadata-only
 ```
@@ -52,14 +52,14 @@ OpenObserve claim before upgrading the application chart:
 
 ```bash
 kubectl annotate pvc demo-ai-chat-openobserve \
-  --namespace ai-chat \
+  --namespace default \
   helm.sh/resource-policy=keep \
   --overwrite
 
-helm upgrade demo ./infra/helm/ai-chat --namespace ai-chat --reuse-values
+helm upgrade demo ./infra/helm/ai-chat --namespace default --reuse-values
 
 helm upgrade --install observability ./infra/helm/observability \
-  --namespace ai-chat \
+  --namespace default \
   --set-string openObserve.persistence.existingClaim=demo-ai-chat-openobserve \
   --wait \
   --timeout 5m
@@ -73,14 +73,14 @@ ownership migration.
 
 ```bash
 helm lint ./infra/helm/observability
-helm template observability ./infra/helm/observability --namespace ai-chat
-kubectl get daemonset,deployment,service,pvc -n ai-chat
+helm template observability ./infra/helm/observability --namespace default
+kubectl get daemonset,deployment,service,pvc -n default
 ```
 
 OpenObserve can be reached locally with:
 
 ```bash
-kubectl port-forward -n ai-chat service/observability-openobserve 5080:5080
+kubectl port-forward -n default service/observability-openobserve 5080:5080
 ```
 
 The dashboard can be reached through its NodePort `30082`, by port-forwarding

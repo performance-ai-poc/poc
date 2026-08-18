@@ -39,6 +39,29 @@ make deploy-app
 make deploy-observability
 ```
 
+## Labels
+
+Every workload carries the standard `app.kubernetes.io/name` and
+`app.kubernetes.io/instance` pair; `instance` is the release name, so it selects
+everything this chart owns.
+
+The orchestrator and mcp-server additionally carry demo presentation labels,
+used by the Multi-Agent Observability Guide's commands:
+
+| Label | On | Purpose |
+| --- | --- | --- |
+| `tier: agent` | orchestrator, mcp-server | `-l tier=agent` shows the agent core |
+| `app: agent-orchestrator` | orchestrator | `-l app=agent-orchestrator` tails orchestrator logs |
+
+Both are set on `metadata.labels` and the pod template only, never on
+`spec.selector.matchLabels` — a Deployment's selector is immutable after
+creation, so adding to it would make `helm upgrade` fail on an existing release
+and force a delete/reinstall.
+
+Note that `app: agent-orchestrator` is a Kubernetes label and is unrelated to
+the OTel `service.name`, which this codebase emits as `backend-api`. That
+naming discrepancy is an open decision — see `orchestrator-svc/README.md`.
+
 ## Customer UI Ingress
 
 The customer UI already serves the built React app through Nginx inside the
@@ -94,7 +117,7 @@ different values for a shared environment:
 
 ```bash
 helm upgrade --install demo ./infra/helm/ai-chat \
-  --namespace ai-chat \
+  --namespace default \
   --create-namespace \
   --set postgresql.auth.appPassword='<app-password>' \
   --set postgresql.auth.readonlyPassword='<readonly-password>'
@@ -107,25 +130,25 @@ POC chart must also be safe inside PostgreSQL URI user-info fields.
 ### Verify the installation
 
 ```bash
-kubectl get pods,services,pvc,jobs -n ai-chat
-kubectl logs job/demo-ai-chat-mcp-seed -n ai-chat
-kubectl logs deployment/demo-ai-chat-mcp-server -n ai-chat
+kubectl get pods,services,pvc,jobs -n default
+kubectl logs job/demo-ai-chat-mcp-seed -n default
+kubectl logs deployment/demo-ai-chat-mcp-server -n default
 ```
 
 Confirm that the owner can write:
 
 ```bash
-kubectl exec -n ai-chat demo-ai-chat-postgres-0 -- \
+kubectl exec -n default demo-ai-chat-postgres-0 -- \
   psql -U app -d appdb -c "CREATE TABLE permission_check (id integer); DROP TABLE permission_check;"
 ```
 
 Confirm that the read-only user can read but cannot write:
 
 ```bash
-kubectl exec -n ai-chat demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
+kubectl exec -n default demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
   psql -h 127.0.0.1 -U mcp_readonly -d appdb -c "SELECT count(*) FROM customers;"
 
-kubectl exec -n ai-chat demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
+kubectl exec -n default demo-ai-chat-postgres-0 -- env PGPASSWORD=mcp_readonly \
   psql -h 127.0.0.1 -U mcp_readonly -d appdb -c "DELETE FROM customers;"
 ```
 
@@ -137,8 +160,8 @@ Record a table count, delete only the PostgreSQL pod, then wait for the
 StatefulSet to recreate it:
 
 ```bash
-kubectl delete pod demo-ai-chat-postgres-0 -n ai-chat
-kubectl rollout status statefulset/demo-ai-chat-postgres -n ai-chat
+kubectl delete pod demo-ai-chat-postgres-0 -n default
+kubectl rollout status statefulset/demo-ai-chat-postgres -n default
 ```
 
 The replacement pod mounts the same claim, so the seeded tables and data remain.
